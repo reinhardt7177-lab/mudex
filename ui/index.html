@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>무덱스</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect width='30' height='30' rx='8' fill='%2346e0b5'/%3E%3Cpath d='M9.5 21.5V9l6 6.5 6-6.5v12.5' stroke='%2304261c' stroke-width='2.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="mudex.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 30 30"><rect width="30" height="30" rx="8" fill="#46e0b5"/><rect x="3.5" y="5" width="2" height="3" rx=".6" fill="#04261c" opacity=".55"/><rect x="3.5" y="13.5" width="2" height="3" rx=".6" fill="#04261c" opacity=".55"/><rect x="3.5" y="22" width="2" height="3" rx=".6" fill="#04261c" opacity=".55"/><path d="M9.5 21.5V9l6 6.5 6-6.5v12.5" stroke="#04261c" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><b>무덱스</b><small>MUDEX · 영상 에이전트</small></div>
+    </div>
+    <button class="newbtn" id="newJob">＋ 새 작업 <kbd>Ctrl N</kbd></button>
+    <div class="jobs" id="jobs"></div>
+    <button class="cxbtn" id="openCx">🔌 커넥터 (MCP)</button>
+    <div class="conn" id="conn"></div>
+  </aside>
+
+  <main class="main">
+    <div class="top" id="top"></div>
+    <div class="feed" id="feed"></div>
+    <div class="dock" id="dock">
+      <div class="plan" id="plan"></div>
+      <div class="composer" id="composer">
+        <textarea id="input" rows="1" placeholder="무엇을 만들거나 고칠까요?  예) 클립 3개 이어 붙이고 18초로, 음악 얹어서 내보내 줘"></textarea>
+        <div class="bar">
+          <button class="chip" id="addFile">＋ 파일</button>
+          <label class="chip">◎ <select id="model"><option value="gpt-6.1-terra|medium">GPT-6.1 Terra · 보통</option><option value="gpt-6.1-terra|high">GPT-6.1 Terra · 깊게</option><option value="gpt-6.1-terra|low">GPT-6.1 Terra · 빠르게</option><option value="gpt-5-mini|medium">gpt-5-mini · 아껴 쓰기</option></select></label>
+          <button class="send" id="send" title="보내기 (Enter)">↑</button>
+        </div>
+      </div>
+      <div class="foot" id="foot"></div>
+    </div>
+  </main>
+
+  <section class="right">
+    <div class="tabs" id="tabs">
+      <span class="tab on" data-tab="preview">미리보기</span>
+      <span class="tab" data-tab="gen">생성</span>
+      <span class="tab" data-tab="review">검수</span>
+      <span class="tab" data-tab="files">파일</span>
+    </div>
+    <div class="rbody" id="rbody"></div>
+  </section>
+</div>
+<input type="file" id="filePick" multiple accept="video/*,audio/*,image/*" hidden>
+<script src="app.js" type="module"></script>
+</body>
+</html>

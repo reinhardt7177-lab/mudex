@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>무덱스 시안 1 · 편집</title>
+<link rel="stylesheet" href="mudex.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- 왼쪽: 작업 목록 -->
+  <aside class="side">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 30 30"><rect width="30" height="30" rx="8" fill="#46e0b5"/><rect x="3.5" y="5" width="2" height="3" rx=".6" fill="#04261c" opacity=".55"/><rect x="3.5" y="13.5" width="2" height="3" rx=".6" fill="#04261c" opacity=".55"/><rect x="3.5" y="22" width="2" height="3" rx=".6" fill="#04261c" opacity=".55"/><path d="M9.5 21.5V9l6 6.5 6-6.5v12.5" stroke="#04261c" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><b>무덱스</b><small>MUDEX · 영상 에이전트</small></div>
+    </div>
+    <div class="newbtn">＋ 새 작업 <kbd>Ctrl N</kbd></div>
+    <div>
+      <div class="group-t">오늘</div>
+      <div class="job on"><img src="assets/C01a_k1.jpg" alt="">강진 오프닝 18초<span class="dot"></span></div>
+      <div class="job"><img src="assets/C02b_k1.jpg" alt="">우리 학교 소개</div>
+      <div class="job"><div class="ph"></div>흙공 장면 다시 뽑기</div>
+    </div>
+    <div>
+      <div class="group-t">이번 주</div>
+      <div class="job"><div class="ph"></div>졸업 축하 영상</div>
+      <div class="job"><div class="ph"></div>과학실 안전 수칙 30초</div>
+      <div class="job"><div class="ph"></div>학급 1년 돌아보기</div>
+    </div>
+    <div class="conn">
+      <div class="conn-row"><span class="led"></span><span>힉스필드</span><span class="v">182 크레딧</span>
+        <div class="meter"><i style="width:91%;background:var(--violet)"></i></div></div>
+      <div class="conn-row"><span class="led"></span><span>강사 코드</span><span class="v">$2.84 남음</span>
+        <div class="meter"><i style="width:94.6%;background:var(--mint)"></i></div></div>
+      <div class="conn-foot"><span class="mono">MDX-UWCK-····</span><span>11/28까지</span></div>
+    </div>
+  </aside>
+
+  <!-- 가운데: 대화 -->
+  <main class="main">
+    <div class="top">
+      <h1>강진 오프닝 18초</h1>
+      <span class="path">D:\무덱스\작업\강진오프닝</span>
+      <span class="sp"></span>
+      <span class="pill">클립 6 · 음악 1</span>
+      <span class="pill mint">● 편집</span>
+    </div>
+
+    <div class="feed"><div class="col">
+      <div class="you">세 클립을 골라 18초로 이어 붙이고 음악 얹어서 내보내 줘. 갯벌 → 산 → 흙공 순서로.</div>
+
+      <div class="say">재료부터 살펴볼게요.</div>
+      <div class="tool">
+        <div class="tool-h"><span class="ic">▤</span><span class="nm">클립 살펴보기</span><span class="fn">list_clips</span><span class="st"><span class="ok">✓</span> 0.4초</span></div>
+        <div class="tool-b">
+          <div class="strip">
+            <figure class="pick" data-n="1"><img src="assets/C01a_k1.jpg" alt=""><figcaption>C01a · 10.0s</figcaption></figure>
+            <figure class="pick" data-n="2"><img src="assets/C02b_k1.jpg" alt=""><figcaption>C02b · 10.0s</figcaption></figure>
+            <figure><img src="assets/C03_k1.jpg" alt=""><figcaption>C03 · 5.0s</figcaption></figure>
+            <figure><img src="assets/C04_k1.jpg" alt=""><figcaption>C04 · 5.0s</figcaption></figure>
+            <figure class="pick" data-n="3"><img src="assets/C05_k1.jpg" alt=""><figcaption>C05 · 8.0s</figcaption></figure>
+            <figure><img src="assets/C06_k1.jpg" alt=""><figcaption>C06 · 5.0s</figcaption></figure>
+          </div>
+        </div>
+      </div>
+
+      <div class="say">갯벌·산·흙공을 <b>6초씩</b> 쓰면 18초가 됩니다. 각 클립의 앞부분을 씁니다.</div>
+      <div class="tool">
+        <div class="tool-h"><span class="ic">✂</span><span class="nm">자르기 3번</span><span class="fn">trim × 3</span><span class="st"><span class="ok">✓</span> 6.0초씩</span></div>
+        <div class="tool-b rows">
+          <div><img src="assets/C01a_k1.jpg" alt="">C01a_k1.mp4 <span>00.00 → 06.00</span><span class="r ok">6.000s</span></div>
+          <div><img src="assets/C02b_k1.jpg" alt="">C02b_k1.mp4 <span>00.00 → 06.00</span><span class="r ok">6.000s</span></div>
+          <div><img src="assets/C05_k1.jpg" alt="">C05_k1.mp4 <span>00.00 → 06.00</span><span class="r ok">6.000s</span></div>
+        </div>
+      </div>
+      <div class="tool">
+        <div class="tool-h"><span class="ic">⧉</span><span class="nm">이어 붙이기</span><span class="fn">concat</span><span class="st"><span class="ok">✓</span> 1920×1080 · 30fps · 18.000s</span></div>
+      </div>
+      <div class="tool">
+        <div class="tool-h"><span class="ic">♪</span><span class="nm">음악 얹기</span><span class="fn">add_music · 밝은패드.mp3 · 끝 1.5초 페이드</span><span class="st"><span class="ok">✓</span></span></div>
+      </div>
+      <div class="tool">
+        <div class="tool-h"><span class="ic">⤓</span><span class="nm">내보내기</span><span class="fn">export_final · 음량 −14 LUFS 맞춤</span><span class="st"><span class="ok">✓</span> 9.8초</span></div>
+      </div>
+
+      <div class="result">
+        <div class="result-h">✓ 지시대로 됐는지 직접 쟀어요 <span class="pill mint">검증 통과</span></div>
+        <div class="kpis">
+          <div class="kpi"><div class="k">길이</div><div class="v">18.000<small> 초</small></div><div class="t">목표 18초 ✓</div></div>
+          <div class="kpi"><div class="k">음량</div><div class="v">−13.97<small> LUFS</small></div><div class="t">유튜브 기준 −14 ✓</div></div>
+          <div class="kpi"><div class="k">트루피크</div><div class="v">−4.7<small> dBTP</small></div><div class="t">−1 이하 ✓</div></div>
+        </div>
+        <div class="file">out/강진오프닝_18s.mp4 · 14.2MB <span class="btn">▶ 재생</span><span class="btn ghost">폴더 열기</span></div>
+      </div>
+    </div></div>
+
+    <div class="dock">
+      <div class="plan">
+        <span class="s done"><span class="b">✓</span>재료 확인</span>
+        <span class="s done"><span class="b">✓</span>6초씩 자르기</span>
+        <span class="s done"><span class="b">✓</span>잇고 음악 얹기</span>
+        <span class="s done"><span class="b">✓</span>내보내고 재기</span>
+        <span class="s" style="margin-left:auto">이번 지시 <b class="mono" style="color:var(--sub)">$0.006</b></span>
+      </div>
+      <div class="composer">
+        <div class="ph">무엇을 만들거나 고칠까요?  예) 2번 컷을 1초 줄이고 자막 넣어 줘</div>
+        <div class="bar">
+          <span class="chip">＋ 클립</span>
+          <span class="chip">◎ gpt-5-mini ▾</span>
+          <span class="chip">✂ 편집 모드</span>
+          <span class="send">↑</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 오른쪽: 미리보기 -->
+  <section class="right">
+    <div class="tabs">
+      <span class="tab on">미리보기</span>
+      <span class="tab">생성 <span class="n">1</span></span>
+      <span class="tab">검수</span>
+      <span class="tab">파일</span>
+    </div>
+    <div class="rbody">
+      <div class="player">
+        <img src="assets/hero.jpg" alt="">
+        <span class="tc">00:00:07.12</span>
+        <span class="badge">결과 · 1080p</span>
+      </div>
+      <div class="ctrl"><span class="play">▶</span><span>07.12 / 18.00</span><span class="sp"></span><span>⟲ 전후 비교</span><span>⤢</span></div>
+
+      <div class="tl">
+        <div class="ruler"><span>0</span><span>3</span><span>6</span><span>9</span><span>12</span><span>15</span><span>18s</span></div>
+        <div class="lane"><span class="lb">V1</span><div class="trk">
+          <div class="clip" style="background-image:url(assets/C01a_k1.jpg)"><span>갯벌</span></div>
+          <div class="clip" style="background-image:url(assets/C02b_k1.jpg)"><span>산</span></div>
+          <div class="clip" style="background-image:url(assets/C05_k1.jpg)"><span>흙공</span></div>
+        </div></div>
+        <div class="lane"><span class="lb">A1</span><div class="trk"><div class="aud"><svg id="wave" viewBox="0 0 400 40" preserveAspectRatio="none"></svg></div></div></div>
+        <div class="playhead"></div>
+      </div>
+
+      <div class="sec-t">측정값 <span class="r">프로그램이 직접 잼</span></div>
+      <div class="mtable">
+        <span class="k">길이</span><span class="v">18.000 s</span><span class="ok">✓</span>
+        <span class="k">해상도 · fps</span><span class="v">1920×1080 · 30</span><span class="ok">✓</span>
+        <span class="k">통합 음량</span><span class="v">−13.97 LUFS</span><span class="ok">✓</span>
+        <span class="k">트루피크</span><span class="v">−4.7 dBTP</span><span class="ok">✓</span>
+      </div>
+    </div>
+  </section>
+</div>
+<script>
+  // 음악 파형(모양만): 끝 1.5초 페이드
+  const w = document.getElementById("wave"); let d = "", s = 7;
+  for (let i = 0; i < 200; i++) {
+    s = (s * 9301 + 49297) % 233280; const r = s / 233280;
+    const x = i * 2, fade = i > 183 ? (200 - i) / 17 : 1;
+    const h = (6 + r * 13 + (i % 25 < 3 ? 5 : 0)) * fade;
+    d += `M${x} ${20 - h}V${20 + h}`;
+  }
+  w.innerHTML = `<path d="${d}" stroke="#9b8cff" stroke-width="1.2" opacity=".85"/>`;
+</script>
+</body>
+</html>

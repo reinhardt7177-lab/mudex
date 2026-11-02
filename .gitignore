@@ -1,0 +1,17 @@
+node_modules/
+.secrets/
+.env
+.env.*
+!.env.example
+.vercel/
+work/
+dist/
+*.log
+data/
+작업/
+# 공개 저장소에서 뺀다: 아직 공개 전인 강진 오프닝 영상 자료(시안 썸네일·시연 영상·캡처)
+mockups/assets/
+mockups/*.png
+시연/
+# 압축 배포판에 넣는 실행 파일(릴리스에만 올림)
+bin/
