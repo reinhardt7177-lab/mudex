@@ -102,7 +102,7 @@ export class Connectors {
   status(c) {
     if (c.practice) return { connected: !!c.practice_connected, logging_in: false };
     const cl = this.client(c);
-    return { connected: cl.loggedIn, logging_in: !!cl.pendingLogin };
+    return { connected: cl.loggedIn&&!cl.authIssue, authorized:cl.loggedIn, error:cl.authIssue?.message??null, logging_in: !!cl.pendingLogin };
   }
 
   view() {

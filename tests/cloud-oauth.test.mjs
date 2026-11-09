@@ -31,5 +31,11 @@ test('cloud OAuth uses public callback, rejects bad state, and stores token afte
     await done;
     assert.equal(client.loggedIn,true);
     assert.equal(client.pendingLogin,null);
+    const rejected=new McpClient(dir,{url:origin+'/mcp',key:'test',publicBase:'https://mudex.example'});
+    rejected.verifyConnection=async()=>{throw new Error('service rejected the new token');};
+    const retry=new URL(await rejected.startLogin()),pending=rejected.pendingLogin.done;
+    await assert.rejects(rejected.completeLogin(new URL(`https://mudex.example/oauth/callback/test?code=x&state=${retry.searchParams.get('state')}`)),/service rejected/);
+    await assert.rejects(pending,/service rejected/);
+    assert.equal(rejected.pendingLogin,null);
   } finally { provider.closeAllConnections();await new Promise(r=>provider.close(r)); }
 });

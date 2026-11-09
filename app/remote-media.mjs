@@ -68,7 +68,7 @@ function completedOutputs(status) {
     if (Array.isArray(value)) { for (const item of value) walk(item); return; }
     if (!value || typeof value !== "object") return;
     for (const [key, item] of Object.entries(value)) {
-      if (/^(url|video_url|image_url|audio_url|download_url|output_url|media_url)$/i.test(key) && typeof item === "string") urls.push(item);
+      if (/^(url|rawUrl|video_url|image_url|audio_url|download_url|output_url|media_url)$/i.test(key) && typeof item === "string") urls.push(item);
       else if (/^(result|results|output|outputs|data|media|files|images|videos|audios|video|image|audio|generations)$/i.test(key)) walk(item);
     }
   };
@@ -83,6 +83,12 @@ export async function importHiggsfieldMedia(ws, args, ctx) {
   if (!UUID.test(String(args.jobId)) || (args.folderId !== undefined && !UUID.test(String(args.folderId)))) throw new Error("기존 작업(jobId)과 폴더 번호는 유효한 UUID여야 합니다.");
   const status = await ctx.hf.call("job_status", { jobId: args.jobId, ...(args.folderId ? { folder_id: args.folderId } : {}) });
   const urls = completedOutputs(status);
+  return { ...await downloadHiggsfieldMedia(ws, urls, args, ctx), jobId:args.jobId };
+}
+
+// Only authenticated provider results reach this helper, never arbitrary URLs from the browser.
+export async function downloadHiggsfieldMedia(ws, urls, args = {}, ctx = {}) {
+  if(!Array.isArray(urls)||!urls.length||urls.length>16)throw new Error('미디어는 한 번에 1~16개까지 가져올 수 있습니다.');
   const deadline = AbortSignal.timeout(10 * 60_000);
   const signal = ctx.signal ? AbortSignal.any([ctx.signal, deadline]) : deadline;
   const files = [];
@@ -115,5 +121,5 @@ export async function importHiggsfieldMedia(ws, args, ctx) {
     for (const rel of files) { try { fs.unlinkSync(ws.p(rel)); } catch {} }
     throw error;
   }
-  return { files, jobId: args.jobId, bytes, note: "기존 미디어를 작업 폴더로 가져왔습니다. 생성 요청은 보내지 않았습니다." };
+  return { files, bytes, note: "기존 미디어를 작업 폴더로 가져왔습니다. 생성 요청은 보내지 않았습니다." };
 }

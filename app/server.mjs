@@ -12,13 +12,14 @@ import { runAgent, relayStatus, DEFAULT_RELAY, DEFAULT_MODEL, DEFAULT_EFFORT } f
 import { Higgsfield } from "./higgsfield.mjs";
 import { Connectors, practiceLoginPage, SAFE_TOOLS } from "./connectors.mjs";
 import { CloudStorage } from './cloud-storage.mjs';
+import { HiggsfieldLibrary } from './higgsfield-library.mjs';
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(APP_DIR, "..");
 const UI_DIR = path.join(ROOT, "ui");
 const CLOUD = !!process.env.MUDEX_PUBLIC_URL;
 const INSTANCE_ID = crypto.randomUUID();
-const APP_VERSION = 'cloud-v4';
+const APP_VERSION = 'cloud-v5';
 const PERSIST = path.resolve(process.env.MUDEX_DATA_ROOT ?? ROOT);
 const DATA = path.join(PERSIST, "data");
 const JOBS = path.join(PERSIST, CLOUD ? 'jobs' : '작업');
@@ -39,6 +40,7 @@ const saveSettings = () => fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settin
 if (!settings.code && process.env.MUDEX_CODE) { settings.code=process.env.MUDEX_CODE; saveSettings(); }
 const relay = () => settings.relay ?? DEFAULT_RELAY;
 const hf = new Higgsfield(DATA);
+const hfLibrary = new HiggsfieldLibrary(hf);
 const connectors = new Connectors(DATA, hf, (ev) => broadcastAll({ type: "connectors_changed", ...ev }));
 
 const MIME = {
@@ -56,7 +58,7 @@ const jobDir = (id) => {
 };
 const metaDir = (id) => { const d = path.join(jobDir(id), ".mudex"); fs.mkdirSync(d, { recursive: true }); return d; };
 const readJson = (f, dflt) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return dflt; } };
-const busyJobs=new Map(), deletingJobs=new Set(), uploads=new Map();
+const busyJobs=new Map(), deletingJobs=new Set(), uploads=new Map(), importingJobs=new Set();
 function existingJobDir(id) {
   const dir=jobDir(id);
   if(!fs.existsSync(dir) || !fs.lstatSync(dir).isDirectory() || fs.lstatSync(dir).isSymbolicLink()) throw Object.assign(new Error('없는 작업입니다.'),{status:404});
@@ -230,10 +232,11 @@ async function state() {
     settings.code && relayStatus(settings.code, relay())
       .then((r) => { s.relay = r.ok ? r.body : { error: r.body.error?.message ?? "확인 실패" }; })
       .catch((e) => { s.relay = { error: "중계 서버에 닿지 않습니다: " + e.message }; }),
-    hf.loggedIn && hf.balance()
+    hf.loggedIn && !hf.authIssue && hf.balance()
       .then((b) => { s.hf.credits = b.credits; s.hf.plan = b.subscription_plan_type; })
       .catch((e) => { s.hf.error = e.message; s.hf.logged_in = hf.loggedIn; }),
   ]);
+  if(hf.authIssue)Object.assign(s.hf,{logged_in:false,authorized:hf.loggedIn,error:hf.authIssue.message,auth_issue:hf.authIssue});
   return {...s, cloud:CLOUD, instance_id:INSTANCE_ID, app_version:APP_VERSION, workspace_id:process.env.MUDEX_WORKSPACE_ID??'local', storage_error:cloudStore?.error ?? null};
 }
 
@@ -245,10 +248,17 @@ const routes = [
     return sendJson(res,200,{ok:true});
   }],
   ["GET", /^\/oauth\/callback\/(hf|mcp_[a-f0-9]+)$/, async (req,res,[,key]) => {
-    await connectors.completeLogin(key,new URL(req.url,process.env.MUDEX_PUBLIC_URL ?? `http://127.0.0.1:${PORT}`));
-    await cloudStore?.sync();
-    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
-    res.end('<!doctype html><html lang="ko"><meta charset="utf-8"><title>무덱스 연결 완료</title><p>연결되었습니다. 이 창을 닫고 무덱스로 돌아가세요.</p><a href="/">무덱스로 돌아가기</a></html>');
+    try{
+      await connectors.completeLogin(key,new URL(req.url,process.env.MUDEX_PUBLIC_URL ?? `http://127.0.0.1:${PORT}`));
+      await cloudStore?.sync();
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
+      res.end('<!doctype html><html lang="ko"><meta charset="utf-8"><title>무덱스 연결 완료</title><p>연결 확인을 마쳤습니다. 이 창을 닫고 무덱스로 돌아가세요.</p><a href="/">무덱스로 돌아가기</a></html>');
+    }catch(error){
+      await cloudStore?.sync();
+      res.writeHead(400,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
+      const message=error.code==='higgsfield_session_rejected'?'로그인은 완료됐지만 힉스필드가 서비스 인증을 거절했습니다. 재로그인 직후에도 반복되면 힉스필드 측 인증 처리 문제일 수 있습니다. 무덱스로 돌아가 영상 가져오기 창의 안내를 확인해 주세요.':'로그인 확인을 마치지 못했습니다. 무덱스로 돌아가 연결 상태를 확인해 주세요.';
+      res.end(`<!doctype html><html lang="ko"><meta charset="utf-8"><title>무덱스 연결 확인 필요</title><p>${message}</p><a href="/">무덱스로 돌아가기</a></html>`);
+    }
   }],
   ["GET", /^\/api\/state$/, async (req, res) => sendJson(res, 200, await state())],
   ["POST", /^\/api\/code$/, async (req, res) => {
@@ -266,9 +276,29 @@ const routes = [
     hf.pendingLogin?.done.then(() => broadcastAll({ type: "hf_changed" }), (e) => broadcastAll({ type: "hf_changed", error: e.message }));
     sendJson(res, 200, { url });
   }],
+  ["POST", /^\/api\/hf\/check$/, async(req,res)=>{
+    await hf.verifyConnection();return sendJson(res,200,{ok:true});
+  }],
   ["POST", /^\/api\/hf\/logout$/, async (req, res) => {
     for(const c of connectors.list)if(!c.practice&&new URL(c.url).host===new URL(hf.url).host)connectors.disconnect(c.id);
-    hf.logout();return sendJson(res,200,{ok:true});
+    hfLibrary.clear();hf.logout();return sendJson(res,200,{ok:true});
+  }],
+  ["GET", /^\/api\/hf\/library$/, async(req,res)=>{
+    const query=new URL(req.url,'http://localhost').searchParams;
+    return sendJson(res,200,await hfLibrary.list({source:query.get('source')??'generations',...(query.has('cursor')?{cursor:query.get('cursor')}:{})}));
+  }],
+  ["POST", /^\/api\/jobs\/([^/]+)\/hf-import$/, async(req,res,[,id])=>{
+    const {key,job_uid}=await readJsonBody(req);
+    const meta=readJson(path.join(metaDir(id),'meta.json'),{});
+    if(!job_uid||job_uid!==meta.uid)return sendJson(res,409,{error:'작업이 바뀌었습니다. 영상 목록을 닫고 다시 열어 주세요.'});
+    if(running.has(id)||importingJobs.has(id))return sendJson(res,409,{error:'진행 중인 영상 작업이나 가져오기를 마친 뒤 다시 시도해 주세요.'});
+    importingJobs.add(id);
+    try {
+      const ac=new AbortController();res.once('close',()=>{if(!res.writableEnded)ac.abort();});
+      const result=await hfLibrary.import(new Workspace(jobDir(id)),{key},{signal:ac.signal});
+      touchJob(id);broadcastAll({type:'jobs_changed'});
+      return await sendJson(res,200,result);
+    }finally{importingJobs.delete(id);}
   }],
   // 커넥터(원격 MCP): 추가 → 연결(진짜 OAuth / 연습) → 도구 목록 → 조회 도구 눌러 보기
   ["GET", /^\/api\/connectors$/, async (req, res) => sendJson(res, 200, { connectors: connectors.view(), safe_tools: SAFE_TOOLS })],
@@ -355,7 +385,7 @@ const routes = [
   ["POST", /^\/api\/jobs\/([^/]+)\/run$/, async (req, res, [, id]) => {
     const { text } = await readJsonBody(req);
     if (!text?.trim()) return sendJson(res, 400, { error: "지시가 비었습니다." });
-    if (running.has(id)) return sendJson(res, 409, { error: "이 작업은 이미 진행 중입니다." });
+    if (running.has(id)||importingJobs.has(id)) return sendJson(res, 409, { error: "이 작업은 이미 진행 중이거나 영상을 가져오고 있습니다." });
     if (!settings.code) return sendJson(res, 400, { error: "강사 코드를 먼저 넣어 주세요." });
     startRun(id, text.trim());
     sendJson(res, 200, { ok: true });
@@ -424,7 +454,7 @@ const server = http.createServer(async (req, res) => {
     }
     res.writeHead(404); res.end();
   } catch (e) {
-    if (!res.headersSent) return sendJson(res, e.status??500, { error: e.message });
+    if (!res.headersSent) return sendJson(res, e.status??500, { error: e.message, ...(e.code==='higgsfield_session_rejected'?{code:e.code,request_id:e.request_id}: {}) });
     else res.end();
   }
 });

@@ -51,6 +51,10 @@ test('pending jobs, unsigned users and invalid ids do not start downloads or gen
   assert.equal(s.requests(),0);
   assert.ok(s.calls.every(c=>c.name==='job_status'));
 });
+test('normalized Higgsfield rawUrl results import the video without downloading its thumbnail',async t=>{
+  const s=await setup(t);s.hf.call=async()=>({status:'completed',results:{rawUrl:'https://media.example/video.mp4',thumbnailUrl:'https://media.example/thumb.jpg'}});
+  const result=await s.run({jobId:JOB});assert.equal(result.files.length,1);assert.equal(s.requests(),1);
+});
 
 test('download rejects local URLs and DNS addresses, unsupported media and files over 2GB',async t=>{
   const s=await setup(t,{url:'https://127.0.0.1/video.mp4'});

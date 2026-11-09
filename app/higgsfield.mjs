@@ -40,18 +40,23 @@ export class McpClient {
     this.session = null;
     this.nextId = 1;
     this.pendingLogin = null;
+    this.authIssue = null;
+    this.authEpoch = 0;
   }
 
   get loggedIn() { return !!this.token; }
 
-  saveToken(t) {
+  saveToken(t, {refresh=false}={}) {
+    if(!refresh)this.authEpoch++;
     this.token = t;
     fs.writeFileSync(this.tokenFile, JSON.stringify(t));
   }
 
   logout() {
+    this.authEpoch++;
     this.token = null;
     this.session = null;
+    this.authIssue = null;
     try { fs.unlinkSync(this.tokenFile); } catch {}
   }
 
@@ -151,7 +156,9 @@ export class McpClient {
       });
       if (tok.status >= 300 || !tok.body.access_token) throw new Error(`토큰 교환 실패 ${tok.status}`);
       this.saveToken({...tok.body, obtained_at:Date.now(),token_endpoint:p.as.token_endpoint,client_id:p.client.client_id,resource:p.resource});
-      this.session=null;p.finish();
+      this.session=null;this.authIssue=null;
+      await this.verifyConnection();
+      p.finish();
     } catch(e) {p.finish(e);throw e;}
   }
 
@@ -166,7 +173,7 @@ export class McpClient {
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: t.client_id, resource: t.resource }),
     });
     if (r.status >= 300) { this.logout(); throw new Error(`${this.label} 로그인이 만료되었습니다. 다시 연결해 주세요.`); }
-    this.saveToken({ ...t, ...r.body, obtained_at: Date.now() });
+    this.saveToken({ ...t, ...r.body, obtained_at: Date.now() },{refresh:true});
     this.session = null;
   }
 
@@ -205,6 +212,8 @@ export class McpClient {
     await this.rpc("notifications/initialized", null, true);
   }
 
+  async verifyConnection() {}
+
   // 도구 호출. 결과는 structuredContent가 있으면 그것, 없으면 텍스트를 JSON으로 읽어 본다.
   async call(name, args = {}) {
     await this.ensureSession();
@@ -216,7 +225,15 @@ export class McpClient {
       throw e;
     }
     const text = (res.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
+    const details=res.structuredContent??(()=>{try{return JSON.parse(text);}catch{return null;}})();
+    if(this.url===MCP_URL && (res.isError||details?.error) && /Your Higgsfield session has expired|FNF API .*?\(401\)/i.test(res.isError?text+' '+JSON.stringify(details):JSON.stringify(details.error))) {
+      const message='힉스필드가 인증을 거절했습니다. 다시 로그인한 직후에도 반복된다면 힉스필드 측 인증 처리 문제일 수 있습니다. 영상 파일을 직접 올려 편집하거나 잠시 뒤 연결 확인을 눌러 주세요.';
+      this.authIssue={code:'higgsfield_session_rejected',message,request_id:details?.request_id??null};
+      throw Object.assign(new Error(message),this.authIssue);
+    }
     if (res.isError) throw new Error(`${this.label} ${name}: ${text.slice(0, 400)}`);
+    if(details?.error)throw new Error(`${this.label} ${name}: ${typeof details.error==='string'?details.error:JSON.stringify(details.error)}`);
+    this.authIssue=null;
     if (res.structuredContent) return res.structuredContent;
     try { return JSON.parse(text); } catch { return { text }; }
   }
@@ -261,5 +278,6 @@ function page(title, msg) {
 // 무덱스의 생성 도구가 쓰는 힉스필드 연결
 export class Higgsfield extends McpClient {
   constructor(dataDir) { super(dataDir, { url: MCP_URL, key: "hf", label: "힉스필드" }); }
+  async verifyConnection() {await this.balance();}
 }
 export const HIGGSFIELD_MCP_URL = MCP_URL;

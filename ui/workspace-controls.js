@@ -10,7 +10,7 @@ export function createWorkspaceControls({state,api,refreshJob,refreshState,clear
   const supported=()=>typeof window.showDirectoryPicker==='function';
   function render() {
     const s=state();bar.hidden=!s.job;if(!s.job)return;
-    const ready=!!s.st&&(!s.st.cloud||s.st.app_version==='cloud-v4');
+    const ready=!!s.st&&(!s.st.cloud||s.st.app_version==='cloud-v5');
     const saved=s.st?.storage_error?'저장 오류':!s.st?'저장 확인 실패':s.running?'클라우드 자동 저장 중':s.st.cloud?(s.st.saved_at?`클라우드 저장 확인 ${new Date(s.st.saved_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}`:'클라우드 자동 저장'):'이 PC에 자동 저장';
     bar.innerHTML=`<div class="workspace-actions">
       <button data-action="rename" ${ready?'':'disabled'}>이름 변경</button><button data-action="delete" class="danger" ${!ready||s.running||busyJob===s.jobId?'disabled':''}>삭제</button>

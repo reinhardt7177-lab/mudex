@@ -1,5 +1,6 @@
 // 무덱스 화면. 서버(app/server.mjs)의 /api와 실시간 이벤트(SSE)로 움직인다.
 import {createWorkspaceControls} from './workspace-controls.js';
+import {openHiggsfieldLibrary} from './higgsfield-library.js';
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtS = (s) => (s == null ? "" : `${Number(s).toFixed(s % 1 ? 3 : 0)}s`);
@@ -10,7 +11,7 @@ const api = async (method, url, body) => {
   const r = await fetch(url, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
   if (r.status===401) { location.href='/'; throw new Error('강사 코드로 다시 입장해 주세요.'); }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error ?? `오류 ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(j.error ?? `오류 ${r.status}`),{code:j.code,request_id:j.request_id});
   return j;
 };
 function toast(msg, ms = 2600) {
@@ -62,7 +63,7 @@ function renderSide() {
       : `<div class="conn-row"><span class="led"></span><span>강사 코드</span><span class="v">$${(rl?.remaining_usd ?? 0).toFixed(2)} 남음</span>
          <div class="meter"><i style="width:${rl ? (rl.remaining_usd / rl.budget_usd) * 100 : 0}%;background:var(--mint)"></i></div></div>
          <div class="conn-foot"><span class="mono">${esc(st.code_hint)}</span><span>${rl?.expires_at ? new Date(rl.expires_at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }) + "까지" : ""}</span></div>`;
-  $("#conn").innerHTML = hfRow + codeRow + (st?.cloud&&st.app_version!=='cloud-v4'&&!S.jobId?'<button class="chip" id="cloudUpdate" style="margin:12px">작업실 업데이트</button>':'') + (st?.cloud ? '<button class="chip" id="cloudLogout" style="margin:12px">저장하고 나가기</button>' : '');
+  $("#conn").innerHTML = hfRow + (hf.auth_issue?'<div class="conn-foot">인증 확인 필요 · 영상 가져오기에서 연결 확인</div>':'') + codeRow + (st?.cloud&&st.app_version!=='cloud-v5'&&!S.jobId?'<button class="chip" id="cloudUpdate" style="margin:12px">작업실 업데이트</button>':'') + (st?.cloud ? '<button class="chip" id="cloudLogout" style="margin:12px">저장하고 나가기</button>' : '');
   $('#cloudUpdate')?.addEventListener('click',async()=>{try{await api('POST','/cloud/restart');location.reload();}catch(e){toast(e.message,5000);}});
   $('#cloudLogout')?.addEventListener('click',async()=>{try {await api('POST','/cloud/logout');localStorage.removeItem('mudex.job');location.href='/';}catch(e){toast(e.message);}});
   $("#hfLogin")?.addEventListener("click", () => openConnectors());
@@ -570,7 +571,7 @@ function bindToolRow(r) {
       if (b) b.onclick = async () => {
         b.disabled = true; b.textContent = "실행 중…";
         try {
-          if(S.st?.cloud&&S.st.app_version!=='cloud-v4')throw new Error('진행 중인 작업을 마친 뒤 상단의 작업실 업데이트를 눌러 주세요.');
+          if(S.st?.cloud&&!['cloud-v4','cloud-v5'].includes(S.st.app_version))throw new Error('진행 중인 작업을 마친 뒤 상단의 작업실 업데이트를 눌러 주세요.');
           const args=JSON.parse($('.mcp-input',r).value);
           if(!args||Array.isArray(args)||typeof args!=='object')throw new Error('입력값은 JSON 객체로 넣어 주세요.');
           const proposal=await api('POST',`/api/connectors/${CX.toolsOf}/prepare`,{name:t.name,args});
@@ -598,7 +599,7 @@ function renderCxList() {
   CX.el.innerHTML = `<div class="cx">${cxHead("커넥터", "무덱스가 바깥 서비스의 도구를 쓰게 연결합니다. 클로드의 '커넥터 추가'와 같은 방식(원격 MCP)입니다.")}
     <div class="cx-b">
     ${CX.list.map((c) => `<div class="cc"><div class="av ${c.connected ? "on" : ""}">${esc(c.name[0] ?? "?")}</div>
-      <div><div class="nm">${esc(c.name)} ${c.practice ? `<span class="pill amber">연습 모드</span>` : ""} ${c.connected ? `<span class="pill mint">● 연결됨${c.tools_count ? ` · 도구 ${c.tools_count}` : ""}</span>` : c.logging_in ? `<span class="pill violet">로그인 기다리는 중…</span>` : `<span class="pill">연결 안 됨</span>`}</div><div class="u">${esc(c.url)}</div></div>
+      <div><div class="nm">${esc(c.name)} ${c.practice ? `<span class="pill amber">연습 모드</span>` : ""} ${c.connected ? `<span class="pill mint">● 연결됨${c.tools_count ? ` · 도구 ${c.tools_count}` : ""}</span>` : c.logging_in ? `<span class="pill violet">로그인 기다리는 중…</span>` : `<span class="pill">${c.error?'인증 확인 필요':'연결 안 됨'}</span>`}</div><div class="u">${esc(c.url)}</div>${c.error?`<p class="muted" role="status">${esc(c.error)}</p>`:''}</div>
       <div class="acts" data-id="${c.id}">${c.connected ? `<button class="btn" data-a="tools">도구 보기</button><button class="btn ghost" data-a="disconnect">연결 끊기</button>` : `<button class="btn vio" data-a="connect">연결</button>`}<button class="btn ghost" data-a="remove" title="목록에서 빼기">🗑</button></div></div>`).join("")}
     <div class="addf"><b>＋ 커스텀 커넥터 추가</b>
       <label>이름<input type="text" id="cxName" placeholder="예) Higgsfield"></label>
@@ -692,6 +693,7 @@ $("#send").onclick = send;
 $("#input").addEventListener("input", autosize);
 $("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
 $("#addFile").onclick = () => $("#filePick").click();
+$('#openHfLibrary').onclick=()=>{closeMobilePanels();if(document.querySelector('.hf-library'))return;openHiggsfieldLibrary({state:()=>S,api,refreshJob,refreshState,openConnectors,upload:()=>$('#filePick').click(),toast});};
 $("#filePick").onchange = (e) => { uploadFiles([...e.target.files]); e.target.value = ""; };
 $("#model").onchange = (e) => { const [model, effort] = e.target.value.split("|"); api("POST", "/api/model", { model, effort }); };
 bindDrop($("#composer"));
@@ -706,8 +708,9 @@ const ges = new EventSource("/api/events");
 ges.onmessage = (m) => {
   const e = JSON.parse(m.data);
   if(e.type==='job_deleted'){clearJob(e.id);refreshState();return;}
-  if (e.type === "hf_changed") { refreshState(); toast(e.error ? `힉스필드 로그인 실패: ${e.error}` : "힉스필드 로그인 완료!"); }
+  if (e.type === "hf_changed") { refreshState();window.dispatchEvent(new CustomEvent('mudex-hf-changed',{detail:e}));toast(e.error ? e.error : "힉스필드 연결 확인 완료!"); }
   if (e.type === "connectors_changed") {
+    if(document.querySelector('.hf-library')&&(e.ok===true||e.ok===false))window.dispatchEvent(new CustomEvent('mudex-hf-changed',{detail:e}));
     refreshState();
     if (CX.el && CX.view === "list") loadConnectors();
     if (e.ok === true) toast("연결됐어요! '도구 보기'를 눌러 보세요.", 4000);
