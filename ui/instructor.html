@@ -1,0 +1,15 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>무덱스 · 강사 관리</title><link rel="stylesheet" href="/instructor.css"></head>
+<body><main>
+<header><a class="brand" href="/">무덱스</a><nav aria-label="강사 메뉴"><a href="#codes-title">작업실 선택</a><button id="logout">강사 로그아웃</button></nav></header>
+<h1>강사 관리</h1><p class="intro">연수생마다 다른 코드를 나눠 주세요. 같은 코드를 사용하면 작업공간도 함께 사용합니다.</p>
+<section aria-labelledby="issue-title"><h2 id="issue-title">연수생 코드 발급</h2><form id="issue">
+<label>이름<input name="label" value="연수생" required maxlength="40"></label>
+<label>발급 개수<input name="count" type="number" value="20" min="1" max="100" step="1" required></label>
+<label>1인 한도 (달러)<input name="budget" type="number" value="3" min="0.01" max="100" step="0.01" required></label>
+<label>만료일 (한국 시각)<input name="until" type="date" required></label>
+<button class="primary" type="submit">코드 발급</button>
+<p id="total">총 한도 $60.00 · 발급 자체에는 비용이 들지 않습니다.</p></form></section>
+<section aria-labelledby="codes-title"><div class="list-head"><div><h2 id="codes-title">코드와 사용 현황</h2><p id="summary">불러오는 중입니다.</p></div><div class="list-actions"><button id="copy-all">사용 가능한 코드 복사</button><button id="refresh">새로고침</button></div></div>
+<p id="message" role="status" aria-live="polite"></p>
+<div class="table-wrap"><table><thead><tr><th>이름</th><th>연수생 코드</th><th>사용 / 한도</th><th>만료일</th><th>상태</th><th>작업</th></tr></thead><tbody id="codes"></tbody></table></div></section>
+</main><script src="/instructor.js" type="module"></script></body></html>

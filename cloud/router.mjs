@@ -1,4 +1,5 @@
 import { signSession, readSession, tenantId, storageToken, storageKey } from './auth.mjs';
+import {instructor} from './instructor.mjs';
 const RELAY='https://nqspbiprvsbjluqpjvpo.supabase.co/functions/v1/mudex-relay';
 const cookieName='__Host-mudex';
 const json=(body,status=200,headers={})=>Response.json(body,{status,headers:{'Cache-Control':'no-store',...headers}});
@@ -46,12 +47,13 @@ export default {
     try {
       if (url.pathname.startsWith('/__storage/')) return await storage(request,env,url);
       if (!['GET','HEAD'].includes(request.method) && request.headers.get('Origin')!==url.origin) return json({error:'요청 출처를 확인하지 못했습니다.'},403);
+      if(url.pathname.startsWith('/cloud/instructor/') || ['/instructor','/instructor/login','/instructor.html'].includes(url.pathname)) return await instructor(request,env,url);
       if(url.pathname==='/cloud/login' && request.method==='POST') {
         if(Number(request.headers.get('Content-Length'))>2048) return json({error:'요청이 너무 큽니다.'},413);
         if(!await env.LOGIN_LIMIT.limit({key:request.headers.get('CF-Connecting-IP') ?? 'unknown'}).then(x=>x.success)) return json({error:'잠시 후 다시 시도해 주세요.'},429);
         const {code:input}=await request.json();
         const code=String(input??'').trim().toUpperCase();
-        if(!/^MDX-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) return json({error:'강사 코드를 확인해 주세요.'},400);
+        if(!/^MDX-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) return json({error:'연수생 코드(MDX-XXXX-XXXX)를 확인해 주세요.'},400);
         const response=await fetch(`${RELAY}/status`,{headers:{Authorization:`Bearer ${code}`},signal:AbortSignal.timeout(15000)});
         const result=await response.json();
         if(!response.ok) return json({error:result.error?.message ?? '코드를 확인하지 못했습니다.'},400);
@@ -71,7 +73,15 @@ export default {
         const headers=new Headers(request.headers);headers.delete('Cookie');headers.delete('Authorization');headers.set('X-Mudex-Tenant',tenant);
         const app=env.CONTAINERS.getByName(tenant);
         await app.ensureConfigured(tenant,url.origin);
-        return await app.fetch(new Request(request,{headers}));
+        const response=await app.fetch(new Request(request,{headers}));
+        if(/^\/(f|thumb)\//.test(url.pathname)) {
+          const safeHeaders=new Headers(response.headers);
+          safeHeaders.set('Content-Security-Policy',"sandbox; default-src 'none'");
+          safeHeaders.set('X-Content-Type-Options','nosniff');
+          if(!/\.(mp4|mov|webm|mkv|m4v|mp3|wav|m4a|aac|ogg|flac|png|jpe?g|webp)$/i.test(url.pathname)) safeHeaders.set('Content-Disposition','attachment');
+          return new Response(response.body,{status:response.status,statusText:response.statusText,headers:safeHeaders});
+        }
+        return response;
       }
       if (!tenant && (url.pathname==='/' || url.pathname==='/index.html')) {
         const response=await env.ASSETS.fetch(new Request(`${url.origin}/cloud-login.html`));
