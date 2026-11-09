@@ -1,4 +1,5 @@
 // 무덱스 화면. 서버(app/server.mjs)의 /api와 실시간 이벤트(SSE)로 움직인다.
+import {createWorkspaceControls} from './workspace-controls.js';
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtS = (s) => (s == null ? "" : `${Number(s).toFixed(s % 1 ? 3 : 0)}s`);
@@ -18,6 +19,13 @@ function toast(msg, ms = 2600) {
 }
 
 const S = { st: null, jobId: new URLSearchParams(location.search).get("job") ?? localStorage.getItem("mudex.job"), job: null, es: null, tab: "preview", cards: new Map(), plan: null, runCost: 0, gens: new Map(), sheet: null, verify: null, running: false, lastTrimCard: null };
+const workspace=createWorkspaceControls({state:()=>S,api,refreshJob,refreshState,clearJob,uploadFiles,modal,toast});
+let jobGeneration=0;
+function clearJob(id) {
+  if(S.jobId!==id)return;jobGeneration++;S.es?.close();S.es=null;S.jobId=null;S.job=null;S.loading=false;S.running=false;S.plan=null;S.verify=null;S.sheet=null;S.cards.clear();S.gens.clear();localStorage.removeItem('mudex.job');
+  const url=new URL(location.href);url.searchParams.delete('job');history.replaceState(null,'',url);
+  renderPlan();renderTop();renderEmpty();renderRight();renderSend();renderFoot();
+}
 function closeMobilePanels() {
   $('.app').classList.remove('show-side','show-preview');
   $('#mobileSide')?.setAttribute('aria-expanded','false');$('#mobilePreview')?.setAttribute('aria-expanded','false');
@@ -54,7 +62,8 @@ function renderSide() {
       : `<div class="conn-row"><span class="led"></span><span>강사 코드</span><span class="v">$${(rl?.remaining_usd ?? 0).toFixed(2)} 남음</span>
          <div class="meter"><i style="width:${rl ? (rl.remaining_usd / rl.budget_usd) * 100 : 0}%;background:var(--mint)"></i></div></div>
          <div class="conn-foot"><span class="mono">${esc(st.code_hint)}</span><span>${rl?.expires_at ? new Date(rl.expires_at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }) + "까지" : ""}</span></div>`;
-  $("#conn").innerHTML = hfRow + codeRow + (st?.cloud ? '<button class="chip" id="cloudLogout" style="margin:12px">저장하고 나가기</button>' : '');
+  $("#conn").innerHTML = hfRow + codeRow + (st?.cloud&&st.app_version!=='cloud-v4'&&!S.jobId?'<button class="chip" id="cloudUpdate" style="margin:12px">작업실 업데이트</button>':'') + (st?.cloud ? '<button class="chip" id="cloudLogout" style="margin:12px">저장하고 나가기</button>' : '');
+  $('#cloudUpdate')?.addEventListener('click',async()=>{try{await api('POST','/cloud/restart');location.reload();}catch(e){toast(e.message,5000);}});
   $('#cloudLogout')?.addEventListener('click',async()=>{try {await api('POST','/cloud/logout');localStorage.removeItem('mudex.job');location.href='/';}catch(e){toast(e.message);}});
   $("#hfLogin")?.addEventListener("click", () => openConnectors());
   $("#setCode")?.addEventListener("click", askCode);
@@ -94,6 +103,7 @@ function askCode() {
 }
 
 function newJob() {
+  closeMobilePanels();
   modal({
     title: "새 작업", text: "작업 이름을 정해 주세요. 작업마다 폴더가 하나씩 생깁니다.", placeholder: "예) 우리 학교 소개 30초", ok: "만들기",
     onOk: async (v) => { const { id } = await api("POST", "/api/jobs", { name: v }); await refreshState(); openJob(id); },
@@ -102,10 +112,11 @@ function newJob() {
 
 // ---------- 가운데 ----------
 function renderTop() {
+  workspace.render();
   if (!S.job) { $("#top").innerHTML = `<h1>무덱스</h1><span class="sp"></span>`; return; }
   const files = S.job.files ?? [];
   const nv = files.filter((f) => f.kind === "video").length, na = files.filter((f) => f.kind === "audio").length, ni = files.filter((f) => f.kind === "image").length;
-  $("#top").innerHTML = `<h1>${esc(S.jobId)}</h1><span class="path">${S.st?.cloud ? '클라우드 작업공간' : esc(S.job.dir)}</span><span class="sp"></span>
+  $("#top").innerHTML = `<h1>${esc(S.job.name??S.jobId)}</h1><span class="path">${S.st?.cloud ? '클라우드 작업공간' : esc(S.job.dir)}</span><span class="sp"></span>
     <span class="pill">영상 ${nv} · 음악 ${na} · 사진 ${ni}</span>
     ${S.running ? `<span class="pill violet">● 작업 중</span>` : `<span class="pill mint">● 대기</span>`}`;
 }
@@ -180,7 +191,7 @@ function renderEvent(e, live) {
     case "answer": markAnswered(e); break;
     case "gen": updateGen(e); break;
     case "sheet": S.sheet = e; renderSheet(e); if (live) setTab("review"); break;
-    case "done": S.verify = e.verify; renderDone(e); if (live) { refreshJob(); setTab("preview"); } break;
+    case "done": S.verify = e.verify; renderDone(e); if (live) { refreshJob(); refreshState(); setTab("preview"); } break;
     case "error": addEl(`<div class="errcard">⚠ ${esc(e.message)}</div>`); break;
     case "status": S.running = e.running; renderTop(); renderSend(); renderSide(); break;
   }
@@ -290,6 +301,10 @@ function renderAsk(e, live) {
       modal({ title: "어떻게 바꿀까요?", placeholder: "예) 더 천천히, 카메라는 고정", ok: "전하기", onOk: async (v) => answer(e.ask_id, `생성하지 말고 프롬프트를 이렇게 고쳐서 다시 물어봐 주세요: ${v}`) });
     };
     if (!activeNow) { card.dataset.done = 1; $(".acts", card).innerHTML = `<span class="note">지난 질문</span>`; }
+  } else if(e.kind==='mcp_approve') {
+    const card=addEl(`<div class="approve" data-ask="${esc(e.ask_id)}" data-mcp="true"><div class="h">MCP 실행 확인 <span class="pill">승인 필요</span></div><b>${esc(e.connector?.name??'커넥터')} · ${esc(e.tool??e.tool_name)}</b><p>${esc(e.reason??'비용 사용이나 데이터 변경이 발생할 수 있습니다.')}</p><pre class="mcp-arguments">${esc(JSON.stringify(e.arguments??e.args??{},null,2))}</pre><div class="prompt">승인은 아래 요청 한 번에만 적용됩니다. 비용이 있는 도구는 서비스의 비용 조회 결과도 확인해 주세요.</div><div class="acts"><button class="btn vio">승인하고 실행</button><button class="btn ghost">취소</button></div></div>`);
+    $('.vio',card).onclick=()=>answer(e.ask_id,'yes');$('.ghost',card).onclick=()=>answer(e.ask_id,'no');
+    if(!activeNow){card.dataset.done=1;$('.acts',card).innerHTML='<span class="note">지난 요청</span>';}
   }
 }
 
@@ -300,7 +315,7 @@ function markAnswered(e) {
   const t = new Date(e.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
   if (card.classList.contains("approve")) {
     const yes = e.value === "yes";
-    $(".acts", card).innerHTML = `<span class="btn ${yes ? "vio done" : "ghost"}">${yes ? "✓ 생성하기" : "생성 안 함"}</span><span class="note">${t} 답함 · 허락 없이는 크레딧을 쓰지 않아요</span>`;
+    $(".acts", card).innerHTML = `<span class="btn ${yes ? "vio done" : "ghost"}">${card.dataset.mcp?(yes?'✓ 실행 승인':'실행 안 함'):(yes?'✓ 생성하기':'생성 안 함')}</span><span class="note">${t} 답함 · 승인한 요청에만 적용됩니다</span>`;
   } else {
     for (const fig of card.querySelectorAll("figure")) { const on = fig.dataset.f === e.value; fig.classList.toggle("pick", on); if (on) fig.dataset.n = "✓"; }
     $(".pickacts", card).innerHTML = `<span class="note">${t} · ${card.querySelector(".pick") ? "골랐어요" : esc(e.value)}</span>`;
@@ -356,8 +371,8 @@ function renderSend() {
   b.classList.toggle("stop", S.running);
   b.textContent = S.running ? "■" : "↑";
   b.title = S.running ? "멈추기" : "보내기 (Enter)";
-  b.disabled = !S.jobId;
-  $("#input").disabled = !S.jobId;
+  b.disabled = !S.jobId||S.loading;
+  $("#input").disabled = !S.jobId||S.loading;
 }
 
 // ---------- 오른쪽 ----------
@@ -461,22 +476,26 @@ function lightbox(img, video) {
 }
 
 // ---------- 파일 올리기 ----------
-async function uploadFiles(list) {
-  if (!S.jobId) return toast("먼저 작업을 만들어 주세요.");
-  for (const f of list) {
+async function uploadFiles(list,jobId=S.jobId) {
+  if (!jobId) {toast("먼저 작업을 만들어 주세요.");return {successful:0,failed:list.length};}
+  let successful=0,failed=0;
+  for (const item of list) {
+    const f=item.file??item,relative=item.relative;
     toast(`올리는 중: ${f.name}`);
-    if (f.size>2*1024**3) {toast('파일 하나의 크기는 2GB까지 지원합니다.');continue;}
+    if (f.size>2*1024**3) {toast('파일 하나의 크기는 2GB까지 지원합니다.');failed++;continue;}
     try {
       const chunkSize=16*1024*1024;
       for(let offset=0;offset<f.size || (offset===0 && f.size===0);offset+=chunkSize) {
         const end=Math.min(f.size,offset+chunkSize);
-        const r=await fetch(`/api/jobs/${encodeURIComponent(S.jobId)}/upload?name=${encodeURIComponent(f.name)}&offset=${offset}&final=${end===f.size}`,{method:'PUT',body:f.slice(offset,end)});
+        const r=await fetch(`/api/jobs/${encodeURIComponent(jobId)}/upload?name=${encodeURIComponent(f.name)}${relative?'&relative='+encodeURIComponent(relative):''}&offset=${offset}&final=${end===f.size}`,{method:'PUT',body:f.slice(offset,end)});
         if(!r.ok) throw new Error((await r.json()).error ?? `업로드 오류 ${r.status}`);
       }
-    } catch(e) {toast(`${f.name}: ${e.message}`,5000);}
+      successful++;
+    } catch(e) {failed++;toast(`${f.name}: ${e.message}`,5000);}
   }
-  toast(`${list.length}개 넣었어요.`);
-  await refreshJob();
+  toast(`${successful}개 넣었어요.${failed?` ${failed}개 실패`:''}`);
+  if(S.jobId===jobId)await refreshJob();await refreshState();
+  return {successful,failed};
 }
 function bindDrop(el) {
   el.addEventListener("dragover", (e) => { e.preventDefault(); el.classList.add("drag"); });
@@ -489,6 +508,7 @@ function bindDrop(el) {
 const CX = { el: null, view: "list", list: [], safe: [], tools: null, toolsOf: null, q: "" };
 
 async function openConnectors() {
+  closeMobilePanels();
   if (!CX.el) {
     CX.el = document.createElement("div");
     CX.el.className = "modal";
@@ -521,7 +541,7 @@ function renderCxTools() {
   const q = CX.q.toLowerCase();
   const list = (CX.tools ?? []).filter((t) => !q || t.name.toLowerCase().includes(q) || (t.description ?? "").toLowerCase().includes(q));
   CX.el.innerHTML = `<div class="cx">${cxHead(`${esc(c.name)}의 도구 ${CX.tools ? CX.tools.length + "개" : ""}`,
-    `MCP 서버가 알려 준 도구 목록입니다. 에이전트는 이 중에서 필요한 도구를 골라 부릅니다. <b style="color:var(--mint)">눌러 보기</b> 표시가 있는 조회 도구는 여기서 직접 실행해 볼 수 있어요(크레딧 0).`, true)}
+    `연결된 MCP의 전체 도구입니다. AI도 이 목록을 검색하고 호출합니다. 조회는 바로 실행하며, 비용 사용·삭제·게시 등 변경 작업은 구체적 입력값을 확인한 뒤 승인합니다.`, true)}
     <div class="cx-b"><input class="tsearch" id="tq" placeholder="도구 이름이나 설명으로 찾기 (예: video, balance)" value="${esc(CX.q)}">
     <div id="tlist" style="display:grid;gap:8px"></div></div></div>`;
   const tl = $("#tlist");
@@ -531,7 +551,7 @@ function renderCxTools() {
     // 눌러 볼 수 있는 도구를 위로
     l.sort((a, b) => (CX.safe.includes(b.name) ? 1 : 0) - (CX.safe.includes(a.name) ? 1 : 0));
     tl.innerHTML = !CX.tools ? `<div class="thinking"><i></i><i></i><i></i> 도구 목록을 받는 중</div>`
-      : l.map((t) => `<div class="trow" data-t="${esc(t.name)}"><div class="tn">${esc(t.name)}${CX.safe.includes(t.name) ? `<span class="safe">눌러 보기</span>` : ""}</div><div class="td">${esc(t.description)}</div></div>`).join("") || `<div class="muted">찾는 도구가 없어요.</div>`;
+      : l.map((t) => `<div class="trow" data-t="${esc(t.name)}"><div class="tn">${esc(t.name)}<span class="toolbadge">${CX.safe.includes(t.name)?'기본 조회':'입력 후 실행'}</span></div><div class="td">${esc(t.description)}</div></div>`).join("") || `<div class="muted">찾는 도구가 없어요.</div>`;
     tl.querySelectorAll(".trow").forEach(bindToolRow);
   };
   void list;
@@ -541,22 +561,37 @@ function renderCxTools() {
 
 function bindToolRow(r) {
   r.onclick = (e) => {
-    if (e.target.closest("button, pre")) return;
+    if (e.target.closest("button, pre, textarea, input")) return;
     const t = CX.tools.find((x) => x.name === r.dataset.t);
     if (r.classList.toggle("open")) {
-      r.insertAdjacentHTML("beforeend", `<pre>${esc(JSON.stringify(t.inputSchema?.properties ?? {}, null, 2).slice(0, 4000))}</pre>${CX.safe.includes(t.name) ? `<div class="run" style="margin-top:8px"><button class="btn pri">▶ 실행해 보기</button></div>` : ""}`);
+      const example=t.name==='models_explore'?{action:'search',query:'kling',type:'video',limit:5}:{};
+      r.insertAdjacentHTML("beforeend", `<pre>${esc(JSON.stringify(t.inputSchema??{},null,2))}</pre><div class="run" style="margin-top:8px"><label>입력값 (JSON)<textarea class="mcp-input" aria-label="${esc(t.name)} 입력값 JSON" spellcheck="false">${esc(JSON.stringify(example,null,2))}</textarea></label><button class="btn pri">입력값 확인 후 실행</button></div>`);
       const b = $(".run .pri", r);
       if (b) b.onclick = async () => {
         b.disabled = true; b.textContent = "실행 중…";
         try {
-          const args = t.name === "models_explore" ? { action: "search", query: "kling", type: "video", limit: 5 } : {};
-          const j = await api("POST", `/api/connectors/${CX.toolsOf}/call`, { name: t.name, args });
+          if(S.st?.cloud&&S.st.app_version!=='cloud-v4')throw new Error('진행 중인 작업을 마친 뒤 상단의 작업실 업데이트를 눌러 주세요.');
+          const args=JSON.parse($('.mcp-input',r).value);
+          if(!args||Array.isArray(args)||typeof args!=='object')throw new Error('입력값은 JSON 객체로 넣어 주세요.');
+          const proposal=await api('POST',`/api/connectors/${CX.toolsOf}/prepare`,{name:t.name,args});
+          if(proposal.approval_required&&!await confirmMcp(proposal))return;
+          const j = await api("POST", `/api/connectors/${CX.toolsOf}/call`, { name: t.name, args:proposal.arguments, approval_token:proposal.approval_token });
           r.insertAdjacentHTML("beforeend", `<pre style="border-color:rgba(70,224,181,.35)">→ ${esc(t.name)}(${esc(JSON.stringify(args))})\n← ${j.ms}ms\n${esc(JSON.stringify(j.result, null, 2).slice(0, 3000))}</pre>`);
         } catch (err) { r.insertAdjacentHTML("beforeend", `<pre style="color:#ffb3b3">${esc(err.message)}</pre>`); }
-        b.parentElement.remove();
+        finally {b.disabled=false;b.textContent='입력값 확인 후 실행';}
       };
     } else { r.querySelectorAll("pre, .run").forEach((x) => x.remove()); }
   };
+}
+
+function confirmMcp(proposal) {
+  return new Promise(resolve=>{
+    const element=document.createElement('div');element.className='modal mcp-review';element.setAttribute('role','dialog');element.setAttribute('aria-modal','true');element.setAttribute('aria-label','MCP 실행 확인');
+    element.innerHTML=`<div class="box"><h3>MCP 실행 확인</h3><b>${esc(proposal.connector?.name)} · ${esc(proposal.tool)}</b><p>${esc(proposal.reason)}</p><pre class="mcp-arguments">${esc(JSON.stringify(proposal.arguments,null,2))}</pre><p>승인은 이 요청 한 번에만 적용됩니다. 비용이 있는 도구는 서비스의 비용 조회 결과도 확인해 주세요.</p><div class="acts"><button class="btn vio">승인하고 실행</button><button class="btn ghost">취소</button></div></div>`;
+    const done=value=>{element.remove();resolve(value);};
+    $('.vio',element).onclick=()=>done(true);$('.ghost',element).onclick=()=>done(false);element.onkeydown=e=>{if(e.key==='Escape')done(false);};
+    document.body.append(element);$('.ghost',element).focus();
+  });
 }
 
 function renderCxList() {
@@ -572,7 +607,7 @@ function renderCxList() {
       <div class="row"><button class="btn pri" id="cxAdd">추가</button><button class="btn ghost" id="cxFill">힉스필드 주소 넣기</button><span class="msg" id="cxMsg"></span></div>
     </div>
     <div class="howto"><b>순서</b> ① 이름과 MCP 서버 주소를 넣고 추가 → ② <b>연결</b>을 누르면 브라우저에 로그인 창이 뜹니다 → ③ 로그인하고 <b>허용</b> → ④ 무덱스로 돌아오면 <b>연결됨</b>, 도구 목록이 보입니다 → ⑤ <b>balance</b> 같은 조회 도구를 눌러 첫 호출을 해 봅니다.<br>
-    힉스필드 주소: <span class="mono">https://mcp.higgsfield.ai/mcp</span> · 로그인은 OAuth라 무덱스는 비밀번호를 보지 않고, 받은 토큰은 이 PC의 data 폴더에만 저장됩니다.</div>
+    힉스필드 주소: <span class="mono">https://mcp.higgsfield.ai/mcp</span> · 로그인은 OAuth이며, 받은 토큰은 ${S.st?.cloud?'사용자별 클라우드 저장소':'이 PC의 data 폴더'}에 보관합니다.</div>
     </div></div>`;
   $("#cxFill").onclick = () => { $("#cxName").value = "Higgsfield"; $("#cxUrl").value = "https://mcp.higgsfield.ai/mcp"; };
   $("#cxAdd").onclick = async () => {
@@ -604,32 +639,39 @@ async function refreshState() {
   try { S.st = await api("GET", "/api/state"); } catch { S.st = null; }
   if (S.st) $("#model").value = `${S.st.model}|${S.st.effort}`;
   renderSide(); renderFoot();
+  await workspace.restore();workspace.render();
   if (!S.jobId) renderEmpty();
 }
 
 async function refreshJob() {
   if (!S.jobId) return;
-  const j = await api("GET", `/api/jobs/${encodeURIComponent(S.jobId)}`);
+  const id=S.jobId,generation=jobGeneration;
+  const j = await api("GET", `/api/jobs/${encodeURIComponent(id)}`);
+  if(S.jobId!==id||generation!==jobGeneration)return;
   S.job = { ...S.job, ...j };
   renderTop(); renderRight();
 }
 
 async function openJob(id) {
-  S.jobId = id; localStorage.setItem("mudex.job", id);
+  const generation=++jobGeneration;
+  S.jobId = id; S.loading=true; S.job=null;renderTop();renderSend();localStorage.setItem("mudex.job", id);
   S.es?.close();
   S.cards.clear(); S.gens.clear(); S.plan = null; S.sheet = null; S.verify = null; S.runCost = 0; S.lastTrimCard = null;
   let j;
   try { j = await api("GET", `/api/jobs/${encodeURIComponent(id)}`); }
-  catch { S.jobId = null; localStorage.removeItem("mudex.job"); renderEmpty(); return; }
-  S.job = j; S.running = j.running;
+  catch { clearJob(id); return; }
+  if(S.jobId!==id||generation!==jobGeneration)return;S.job = j; S.loading=false;S.running = j.running;
   $("#feed").innerHTML = `<div class="col"></div>`;
   if (!j.events.length) addEl(`<div class="say">새 작업입니다. 오른쪽 <b>파일</b> 칸이나 아래 입력창에 클립·음악·사진을 끌어다 놓고, 하고 싶은 걸 말해 주세요.\n예) “세 클립을 이어 붙여 18초로 만들고 음악 얹어서 내보내 줘”\n예) “갯벌에 흙공이 떨어지는 5초 장면을 만들어 줘”</div>`);
   for (const e of j.events) renderEvent(e, false);
+  S.running=j.running;
   if (S.running) addEl(`<div class="thinking"><i></i><i></i><i></i> 무덱스가 일하는 중</div>`);
   renderPlan(); renderTop(); renderSend(); renderFoot(); renderSide(); renderRight();
   scrollFeed();
+  await workspace.restore();workspace.render();
+  if(S.jobId!==id||generation!==jobGeneration)return;
   S.es = new EventSource(`/api/jobs/${encodeURIComponent(id)}/events`);
-  S.es.onmessage = (m) => { const e = JSON.parse(m.data); S.job.events.push(e); renderEvent(e, true); };
+  S.es.onmessage = (m) => { if(S.jobId!==id||generation!==jobGeneration)return;const e = JSON.parse(m.data); S.job.events.push(e); renderEvent(e, true); };
 }
 
 async function send() {
@@ -663,6 +705,7 @@ document.addEventListener("click", (e) => {
 const ges = new EventSource("/api/events");
 ges.onmessage = (m) => {
   const e = JSON.parse(m.data);
+  if(e.type==='job_deleted'){clearJob(e.id);refreshState();return;}
   if (e.type === "hf_changed") { refreshState(); toast(e.error ? `힉스필드 로그인 실패: ${e.error}` : "힉스필드 로그인 완료!"); }
   if (e.type === "connectors_changed") {
     refreshState();

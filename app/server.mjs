@@ -18,6 +18,7 @@ const ROOT = path.resolve(APP_DIR, "..");
 const UI_DIR = path.join(ROOT, "ui");
 const CLOUD = !!process.env.MUDEX_PUBLIC_URL;
 const INSTANCE_ID = crypto.randomUUID();
+const APP_VERSION = 'cloud-v4';
 const PERSIST = path.resolve(process.env.MUDEX_DATA_ROOT ?? ROOT);
 const DATA = path.join(PERSIST, "data");
 const JOBS = path.join(PERSIST, CLOUD ? 'jobs' : '작업');
@@ -55,16 +56,31 @@ const jobDir = (id) => {
 };
 const metaDir = (id) => { const d = path.join(jobDir(id), ".mudex"); fs.mkdirSync(d, { recursive: true }); return d; };
 const readJson = (f, dflt) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return dflt; } };
+const busyJobs=new Map(), deletingJobs=new Set(), uploads=new Map();
+function existingJobDir(id) {
+  const dir=jobDir(id);
+  if(!fs.existsSync(dir) || !fs.lstatSync(dir).isDirectory() || fs.lstatSync(dir).isSymbolicLink()) throw Object.assign(new Error('없는 작업입니다.'),{status:404});
+  return dir;
+}
+function removeJobTree(dir) {
+  // The caller resolves and checks the job root inside JOBS; symlinks are unlinked, never followed.
+  for(const entry of fs.readdirSync(dir,{withFileTypes:true})) {
+    const file=path.join(dir,entry.name);
+    if(entry.isDirectory()&&!entry.isSymbolicLink())removeJobTree(file);else fs.unlinkSync(file);
+  }
+  fs.rmdirSync(dir);
+}
 
 function listJobs() {
   return fs.readdirSync(JOBS, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => {
     const meta = readJson(path.join(JOBS, d.name, ".mudex", "meta.json"), {});
-    return { id: d.name, name: meta.name ?? d.name, updated: meta.updated ?? fs.statSync(path.join(JOBS, d.name)).mtimeMs, thumb: meta.thumb ?? null };
+    return { id: d.name, name: meta.name ?? d.name, updated: meta.updated ?? fs.statSync(path.join(JOBS, d.name)).mtimeMs, thumb: meta.thumb ?? null, running:running.has(d.name), uploading:(uploads.get(d.name)??0)>0 };
   }).sort((a, b) => b.updated - a.updated);
 }
 function touchJob(id, patch = {}) {
   const f = path.join(metaDir(id), "meta.json");
-  const meta = { ...readJson(f, {}), ...patch, updated: Date.now() };
+  const prior=readJson(f,{});
+  const meta = { ...prior, uid:prior.uid??crypto.randomUUID(), ...patch, updated: Date.now() };
   fs.writeFileSync(f, JSON.stringify(meta));
   return meta;
 }
@@ -96,11 +112,14 @@ async function startRun(id, text) {
   const ctx = {
     emit: (ev) => emit(id, ev),
     hf,
+    connectors,
     signal: ac.signal,
     ask: (kind, payload) => new Promise((resolve, reject) => {
+      if(ac.signal.aborted){reject(new Error('멈췄습니다.'));return;}
       const askId = crypto.randomUUID();
-      asks.set(askId, resolve);
-      ac.signal.addEventListener("abort", () => reject(new Error("멈췄습니다.")), { once: true });
+      const aborted=()=>{asks.delete(askId);reject(new Error('멈췄습니다.'));};
+      asks.set(askId,value=>{ac.signal.removeEventListener('abort',aborted);resolve(value);});
+      ac.signal.addEventListener("abort", aborted, { once: true });
       emit(id, { type: "ask", ask_id: askId, kind, ...payload });
     }),
   };
@@ -174,6 +193,7 @@ async function thumb(id, rel) {
 async function sendJson(res, status, body) {
   try { await cloudStore?.sync(); }
   catch(e) { status=503; body={error:e.message}; }
+  if(body && typeof body==='object' && 'storage_error' in body) {body.saved_at=cloudStore?.lastSaved ?? null;body.storage_error=cloudStore?.error ?? null;}
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   res.end(JSON.stringify(body));
 }
@@ -214,7 +234,7 @@ async function state() {
       .then((b) => { s.hf.credits = b.credits; s.hf.plan = b.subscription_plan_type; })
       .catch((e) => { s.hf.error = e.message; s.hf.logged_in = hf.loggedIn; }),
   ]);
-  return {...s, cloud:CLOUD, instance_id:INSTANCE_ID, storage_error:cloudStore?.error ?? null};
+  return {...s, cloud:CLOUD, instance_id:INSTANCE_ID, app_version:APP_VERSION, workspace_id:process.env.MUDEX_WORKSPACE_ID??'local', storage_error:cloudStore?.error ?? null};
 }
 
 const routes = [
@@ -246,7 +266,10 @@ const routes = [
     hf.pendingLogin?.done.then(() => broadcastAll({ type: "hf_changed" }), (e) => broadcastAll({ type: "hf_changed", error: e.message }));
     sendJson(res, 200, { url });
   }],
-  ["POST", /^\/api\/hf\/logout$/, async (req, res) => { hf.logout(); sendJson(res, 200, { ok: true }); }],
+  ["POST", /^\/api\/hf\/logout$/, async (req, res) => {
+    for(const c of connectors.list)if(!c.practice&&new URL(c.url).host===new URL(hf.url).host)connectors.disconnect(c.id);
+    hf.logout();return sendJson(res,200,{ok:true});
+  }],
   // 커넥터(원격 MCP): 추가 → 연결(진짜 OAuth / 연습) → 도구 목록 → 조회 도구 눌러 보기
   ["GET", /^\/api\/connectors$/, async (req, res) => sendJson(res, 200, { connectors: connectors.view(), safe_tools: SAFE_TOOLS })],
   ["POST", /^\/api\/connectors$/, async (req, res) => sendJson(res, 200, connectors.add(await readJsonBody(req)))],
@@ -254,10 +277,13 @@ const routes = [
   ["POST", /^\/api\/connectors\/([^/]+)\/disconnect$/, async (req, res, [, id]) => { connectors.disconnect(id); broadcastAll({ type: "connectors_changed", id }); sendJson(res, 200, { ok: true }); }],
   ["POST", /^\/api\/connectors\/([^/]+)\/remove$/, async (req, res, [, id]) => { connectors.remove(id); broadcastAll({ type: "connectors_changed", id }); sendJson(res, 200, { ok: true }); }],
   ["GET", /^\/api\/connectors\/([^/]+)\/tools$/, async (req, res, [, id]) => sendJson(res, 200, { tools: await connectors.tools(id) })],
+  ["POST", /^\/api\/connectors\/([^/]+)\/prepare$/, async(req,res,[,id])=>{
+    const {name,args}=await readJsonBody(req);return sendJson(res,200,await connectors.prepareCall(id,name,args??{}));
+  }],
   ["POST", /^\/api\/connectors\/([^/]+)\/call$/, async (req, res, [, id]) => {
-    const { name, args } = await readJsonBody(req);
+    const { name, args, approval_token } = await readJsonBody(req);
     const t0 = Date.now();
-    const result = await connectors.call(id, name, args ?? {});
+    const result = await connectors.call(id, name, args ?? {},{approval_token});
     sendJson(res, 200, { result, ms: Date.now() - t0 });
   }],
   ["GET", /^\/practice\/authorize$/, async (req, res) => {
@@ -277,19 +303,42 @@ const routes = [
     while (fs.existsSync(path.join(JOBS, id))) id = `${clean} ${n++}`;
     fs.mkdirSync(path.join(JOBS, id), { recursive: true });
     touchJob(id, { name: id });
-    sendJson(res, 200, { id });
+    return sendJson(res, 200, { id });
+  }],
+  ["PATCH", /^\/api\/jobs\/([^/]+)$/, async(req,res,[,id])=>{
+    const {name}=await readJsonBody(req);
+    const clean=typeof name==='string'?name.replace(/[\x00-\x1f]/g,' ').trim():'';
+    if(!clean || [...clean].length>40)return sendJson(res,400,{error:'작업 이름은 1~40자로 넣어 주세요.'});
+    touchJob(id,{name:clean});broadcastAll({type:'jobs_changed'});
+    return sendJson(res,200,{id,name:clean});
+  }],
+  ["DELETE", /^\/api\/jobs\/([^/]+)$/, async(req,res,[,id])=>{
+    if(running.has(id)||(busyJobs.get(id)??0)>0)return sendJson(res,409,{error:'작업이나 파일 처리가 끝난 뒤 삭제해 주세요.'});
+    deletingJobs.add(id);
+    try {
+      const dir=existingJobDir(id), remove=()=>removeJobTree(dir);
+      if(cloudStore)await cloudStore.sync(remove);else remove();
+      for(const client of clients.get(id)??[])client.end();clients.delete(id);
+      broadcastAll({type:'job_deleted',id});broadcastAll({type:'jobs_changed'});
+      return await sendJson(res,200,{ok:true});
+    } finally {deletingJobs.delete(id);}
   }],
   ["GET", /^\/api\/jobs\/([^/]+)$/, async (req, res, [, id]) => {
+    const metadataFile=path.join(metaDir(id),'meta.json'),metadata=readJson(metadataFile,{});
+    if(!metadata.uid){metadata.uid=crypto.randomUUID();fs.writeFileSync(metadataFile,JSON.stringify(metadata));}
     const evFile = path.join(metaDir(id), "events.jsonl");
     const events = fs.existsSync(evFile) ? fs.readFileSync(evFile, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
-    sendJson(res, 200, { id, dir: jobDir(id), running: running.has(id), files: await listFiles(id), events, output: latestOutput(id) });
+    return sendJson(res, 200, { id, uid:metadata.uid, workspace_id:process.env.MUDEX_WORKSPACE_ID??'local', name:metadata.name??id, dir: jobDir(id), running: running.has(id), files: await listFiles(id), events, output: latestOutput(id) });
   }],
   ["GET", /^\/api\/jobs\/([^/]+)\/files$/, async (req, res, [, id]) => sendJson(res, 200, await listFiles(id))],
   ["PUT", /^\/api\/jobs\/([^/]+)\/upload$/, async (req, res, [, id]) => {
     const name = path.basename(decodeURIComponent(new URL(req.url, "http://x").searchParams.get("name") ?? "file"));
     if (!name || name.startsWith('.') || /[\\/\x00-\x1f]/.test(name)) return sendJson(res,400,{error:'파일 이름을 확인해 주세요.'});
-    const dst = new Workspace(jobDir(id)).p(name);
+    const ws=new Workspace(jobDir(id));
     const uploadUrl=new URL(req.url,'http://localhost');
+    const relative=uploadUrl.searchParams.get('relative');
+    if(relative && (relative.length>512 || relative.split('/').some(part=>!part || part==='.' || part==='..' || /[\\\x00-\x1f:*?"<>|]/.test(part))))return sendJson(res,400,{error:'폴더의 파일 경로를 확인해 주세요.'});
+    const dst = ws.outPath(relative?'inputs/'+relative:name);
     const offset=Number(uploadUrl.searchParams.get('offset') ?? 0);
     const partial=dst+'.part';
     if (!Number.isSafeInteger(offset) || offset<0 || offset>2*1024**3) return sendJson(res,400,{error:'파일 크기 한도는 2GB입니다.'});
@@ -301,7 +350,7 @@ const routes = [
     });
     if (uploadUrl.searchParams.get('final')!=='false') fs.renameSync(partial,dst);
     touchJob(id);
-    sendJson(res, 200, { ok: true, file: name });
+    return sendJson(res, 200, { ok: true, file: relative?'inputs/'+relative:name });
   }],
   ["POST", /^\/api\/jobs\/([^/]+)\/run$/, async (req, res, [, id]) => {
     const { text } = await readJsonBody(req);
@@ -352,7 +401,20 @@ const server = http.createServer(async (req, res) => {
       const m = p.match(re);
       if (m && req.method === method) {
         // 작업 이름은 decode된 경로에서 뽑았으니 그대로 쓴다
-        return await fn(req, res, m);
+        const selected=p.match(/^\/(?:api\/jobs|f|thumb)\/([^/]+)(?:\/|$)/)?.[1];
+        if(selected) {
+          if(deletingJobs.has(selected))return sendJson(res,409,{error:'이 작업을 삭제하고 있습니다.'});
+          existingJobDir(selected);
+        }
+        const counted=selected && req.method!=='DELETE' && !p.endsWith('/events');
+        const uploading=counted&&req.method==='PUT'&&p.endsWith('/upload');
+        if(counted)busyJobs.set(selected,(busyJobs.get(selected)??0)+1);
+        if(uploading)uploads.set(selected,(uploads.get(selected)??0)+1);
+        try {return await fn(req,res,m);}
+        finally {
+          if(counted) {const n=busyJobs.get(selected)-1;n?busyJobs.set(selected,n):busyJobs.delete(selected);}
+          if(uploading) {const n=uploads.get(selected)-1;n?uploads.set(selected,n):uploads.delete(selected);}
+        }
       }
     }
     if (req.method === "GET") {
@@ -362,7 +424,7 @@ const server = http.createServer(async (req, res) => {
     }
     res.writeHead(404); res.end();
   } catch (e) {
-    if (!res.headersSent) sendJson(res, 500, { error: e.message });
+    if (!res.headersSent) return sendJson(res, e.status??500, { error: e.message });
     else res.end();
   }
 });

@@ -30,7 +30,7 @@ export class MudexContainer extends Container {
     try {
     const {origin,tenant,code}=this.config;
     await this.startAndWaitForPorts({
-      startOptions:{envVars:{PORT:'4870',MUDEX_PUBLIC_URL:origin,MUDEX_DATA_ROOT:'/mudex-store',MUDEX_STORE_URL:`${origin}/__storage/${tenant}/`,MUDEX_STORE_TOKEN:await storageToken(tenant,this.env.SESSION_SECRET),MUDEX_CODE:code}},
+      startOptions:{envVars:{PORT:'4870',MUDEX_PUBLIC_URL:origin,MUDEX_DATA_ROOT:'/mudex-store',MUDEX_WORKSPACE_ID:tenant,MUDEX_STORE_URL:`${origin}/__storage/${tenant}/`,MUDEX_STORE_TOKEN:await storageToken(tenant,this.env.SESSION_SECRET),MUDEX_CODE:code}},
       cancellationOptions:{instanceGetTimeoutMS:90000,portReadyTimeoutMS:180000},
     });
     return await this.containerFetch(request);

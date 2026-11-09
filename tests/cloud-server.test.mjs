@@ -38,14 +38,34 @@ test('cloud server saves chunked uploads and practice connectors across fresh co
     assert.equal(objects.has('jobs/학교 영상/frame.png'),false);
     r=await fetch(`${origin}/api/jobs/${job}/upload?name=frame.png&offset=30&final=true`,{method:'PUT',body:png.subarray(30)});assert.equal(r.status,200);
     assert.deepEqual(objects.get('jobs/학교 영상/frame.png'),png);
+    const renamed=await call('PATCH',`/api/jobs/${job}`,{name:'바뀐 작업 이름'});assert.equal(renamed.status,200);
+    const renamedJob=await call('GET',`/api/jobs/${job}`);assert.equal(renamedJob.body.name,'바뀐 작업 이름');assert.equal(renamedJob.body.id,'학교 영상');
+    const originalUid=renamedJob.body.uid;assert.ok(originalUid);
+    assert.equal((await call('GET','/api/jobs/missing')).status,404);
+    assert.equal((await call('GET','/api/state')).body.jobs.length,1);
+    r=await fetch(`${origin}/api/jobs/${job}/upload?name=nested.png&relative=footage%2Fnested.png`,{method:'PUT',body:png});assert.equal(r.status,200);
+    assert.deepEqual(objects.get('jobs/학교 영상/inputs/footage/nested.png'),png);
+    let resolveUpload,rejectUpload;const uploaded=new Promise((resolve,reject)=>{resolveUpload=resolve;rejectUpload=reject;});uploaded.catch(()=>{});
+    const pending=http.request(`${origin}/api/jobs/${job}/upload?name=busy.png`,{method:'PUT'},res=>{res.resume();res.on('end',()=>resolveUpload(res.statusCode));});pending.on('error',rejectUpload);pending.write(png.subarray(0,30));
+    let uploading=false;for(let n=0;n<20;n++){uploading=(await call('GET','/api/state')).body.jobs[0].uploading;if(uploading)break;}
+    assert.equal(uploading,true);assert.equal((await call('DELETE',`/api/jobs/${job}`)).status,409);
+    pending.end(png.subarray(30));assert.equal(await uploaded,200);
+    r=await fetch(`${origin}/api/jobs/${job}/upload?name=evil.png&relative=..%2F..%2Fdata%2Fevil.png`,{method:'PUT',body:png});assert.equal(r.status,400);
     const added=await call('POST','/api/connectors',{name:'연습',url:'https://mcp.higgsfield.ai/mcp',practice:true});
     const connected=await call('POST',`/api/connectors/${added.body.id}/connect`);assert.ok(connected.body.url.startsWith(origin+'/practice/authorize'));
     await fetch(origin+`/practice/approve?c=${added.body.id}`,{method:'POST'});
     assert.equal((await call('GET','/api/state')).body.cloud,true);
     await stop();await start();
     const state=await call('GET','/api/state');assert.equal(state.body.jobs[0].id,'학교 영상');
+    assert.equal(state.body.jobs[0].name,'바뀐 작업 이름');assert.ok(state.body.saved_at);
+    assert.equal((await call('GET',`/api/jobs/${job}`)).body.uid,originalUid);
     assert.deepEqual(Buffer.from(await (await fetch(`${origin}/f/${job}/frame.png`)).arrayBuffer()),png);
     const connectors=await call('GET','/api/connectors');assert.equal(connectors.body.connectors[0].practice_connected,true);
     const blocked=await call('POST',`/api/connectors/${added.body.id}/call`,{name:'generate_video'});assert.notEqual(blocked.status,200);
+    assert.equal((await call('DELETE',`/api/jobs/${job}`)).status,200);
+    assert.equal((await call('GET',`/api/jobs/${job}`)).status,404);
+    assert.equal([...objects.keys()].some(key=>key.startsWith('jobs/학교 영상/')),false);
+    await stop();await start();assert.equal((await call('GET','/api/state')).body.jobs.length,0);
+    const recreated=await call('POST','/api/jobs',{name:'학교 영상'});const recreatedJob=await call('GET',`/api/jobs/${encodeURIComponent(recreated.body.id)}`);assert.notEqual(recreatedJob.body.uid,originalUid);
   } finally {await stop();store.closeAllConnections();await new Promise(r=>store.close(r));}
 });

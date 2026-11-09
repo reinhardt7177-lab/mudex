@@ -211,10 +211,9 @@ export class McpClient {
     let res;
     try { res = await this.rpc("tools/call", { name, arguments: args }); }
     catch (e) {
-      if (!/session/i.test(e.message)) throw e;
-      this.session = null;
-      await this.ensureSession();
-      res = await this.rpc("tools/call", { name, arguments: args });
+      if (/session/i.test(e.message)) this.session=null;
+      // The server may have completed a paid/destructive call before the connection failed.
+      throw e;
     }
     const text = (res.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
     if (res.isError) throw new Error(`${this.label} ${name}: ${text.slice(0, 400)}`);

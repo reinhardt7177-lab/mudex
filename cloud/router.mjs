@@ -63,6 +63,11 @@ export default {
       }
       const rawCookie=(request.headers.get('Cookie')??'').split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName+'='))?.slice(cookieName.length+1);
       const tenant=await readSession(rawCookie,env.SESSION_SECRET);
+      if(url.pathname==='/cloud/restart' && request.method==='POST') {
+        if(!tenant)return json({error:'코드로 다시 입장해 주세요.'},401);
+        if(!await env.CONTAINERS.getByName(tenant).hibernate())return json({error:'진행 중인 작업과 파일 처리를 마친 뒤 업데이트해 주세요.'},409);
+        return json({ok:true});
+      }
       if(url.pathname==='/cloud/logout' && request.method==='POST') {
         if(tenant && !await env.CONTAINERS.getByName(tenant).hibernate()) return json({error:'진행 중인 영상 작업을 마친 뒤 나가 주세요.'},409);
         return json({ok:true},200,{'Set-Cookie':`${cookieName}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`});

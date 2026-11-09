@@ -9,6 +9,7 @@ export class CloudStorage {
     this.remote = new Map();
     this.queue = Promise.resolve();
     this.error = null;
+    this.lastSaved = null;
   }
   url(key = '', query = '') { return this.base + key.split('/').map(encodeURIComponent).join('/') + query; }
   async call(key, init = {}, query = '') {
@@ -32,8 +33,9 @@ export class CloudStorage {
       this.remote.set(key, this.stamp(dst));
     }
   }
-  sync() {
+  sync(before) {
     const run = async () => {
+      if(before) await before();
       const present = new Set();
       for (const dir of ['data','jobs']) {
         const folder=path.join(this.root,dir);
@@ -66,6 +68,7 @@ export class CloudStorage {
         await this.call(key,{method:'DELETE'}); this.remote.delete(key);
       }
       this.error=null;
+      this.lastSaved=new Date().toISOString();
     };
     this.queue=this.queue.catch(()=>{}).then(run).catch(e=>{this.error=e.message;throw e;});
     return this.queue;
