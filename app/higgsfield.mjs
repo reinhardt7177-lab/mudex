@@ -21,15 +21,18 @@ async function getJson(url, opts) {
 }
 
 export function openBrowser(url) {
+  if (process.env.MUDEX_PUBLIC_URL || process.env.MUDEX_NO_OPEN) return;
   // cmd의 start는 &에서 끊기므로 rundll32로 연다
-  spawn("rundll32", ["url.dll,FileProtocolHandler", url], { detached: true, stdio: "ignore" }).unref();
+  spawn("rundll32", ["url.dll,FileProtocolHandler", url], { detached: true, stdio: "ignore", windowsHide: true }).unref();
 }
 
 export class McpClient {
-  constructor(dataDir, { url = MCP_URL, key = "hf", label = "힉스필드" } = {}) {
+  constructor(dataDir, { url = MCP_URL, key = "hf", label = "힉스필드", publicBase = process.env.MUDEX_PUBLIC_URL } = {}) {
     this.dataDir = dataDir;
     this.url = url;
     this.label = label;
+    this.publicBase = publicBase;
+    this.redirect = publicBase ? `${publicBase}/oauth/callback/${encodeURIComponent(key)}` : REDIRECT;
     fs.mkdirSync(dataDir, { recursive: true });
     this.tokenFile = path.join(dataDir, `${key}_token.json`);
     this.clientFile = path.join(dataDir, `${key}_client.json`);
@@ -37,18 +40,23 @@ export class McpClient {
     this.session = null;
     this.nextId = 1;
     this.pendingLogin = null;
+    this.authIssue = null;
+    this.authEpoch = 0;
   }
 
   get loggedIn() { return !!this.token; }
 
-  saveToken(t) {
+  saveToken(t, {refresh=false}={}) {
+    if(!refresh)this.authEpoch++;
     this.token = t;
     fs.writeFileSync(this.tokenFile, JSON.stringify(t));
   }
 
   logout() {
+    this.authEpoch++;
     this.token = null;
     this.session = null;
+    this.authIssue = null;
     try { fs.unlinkSync(this.tokenFile); } catch {}
   }
 
@@ -66,21 +74,24 @@ export class McpClient {
   }
 
   async register(as) {
-    if (fs.existsSync(this.clientFile)) return JSON.parse(fs.readFileSync(this.clientFile, "utf8"));
+    if (fs.existsSync(this.clientFile)) {
+      const saved = JSON.parse(fs.readFileSync(this.clientFile, "utf8"));
+      if (saved.mudex_redirect === this.redirect || (!this.publicBase && !saved.mudex_redirect)) return saved;
+    }
     if (!as.registration_endpoint) throw new Error(`${this.label}: 이 서버는 자동 등록(동적 클라이언트 등록)을 지원하지 않습니다.`);
     const r = await getJson(as.registration_endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         client_name: "Mudex (무덱스)",
-        redirect_uris: [REDIRECT],
+        redirect_uris: [this.redirect],
         grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],
         token_endpoint_auth_method: "none",
       }),
     });
     if (r.status >= 300) throw new Error(`${this.label}가 클라이언트 등록을 거절했습니다: ` + JSON.stringify(r.body).slice(0, 200));
-    fs.writeFileSync(this.clientFile, JSON.stringify(r.body));
+    fs.writeFileSync(this.clientFile, JSON.stringify({ ...r.body, mudex_redirect: this.redirect }));
     return r.body;
   }
 
@@ -95,7 +106,7 @@ export class McpClient {
     url.search = new URLSearchParams({
       response_type: "code",
       client_id: client.client_id,
-      redirect_uri: REDIRECT,
+      redirect_uri: this.redirect,
       scope: scopes.join(" "),
       state,
       code_challenge: b64url(crypto.createHash("sha256").update(verifier).digest()),
@@ -103,44 +114,52 @@ export class McpClient {
       resource,
     }).toString();
 
-    const done = new Promise((resolve, reject) => {
-      const server = http.createServer(async (req, res) => {
-        const u = new URL(req.url, REDIRECT);
-        if (u.pathname !== "/callback") { res.writeHead(404); res.end(); return; }
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        const code = u.searchParams.get("code");
-        if (!code || u.searchParams.get("state") !== state) {
-          res.end(page("로그인하지 못했습니다", "무덱스 화면으로 돌아가 다시 눌러 주세요."));
-          finish(new Error(u.searchParams.get("error_description") ?? u.searchParams.get("error") ?? "콜백 오류"));
-          return;
-        }
-        res.end(page(`${this.label} 연결 완료`, "이 창을 닫고 무덱스로 돌아가세요."));
-        try {
-          const tok = await getJson(as.token_endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT, client_id: client.client_id, code_verifier: verifier, resource }),
-          });
-          if (tok.status >= 300) throw new Error("토큰 교환 실패 " + tok.status);
-          this.saveToken({ ...tok.body, obtained_at: Date.now(), token_endpoint: as.token_endpoint, client_id: client.client_id, resource });
-          this.session = null;
-          finish();
-        } catch (e) { finish(e); }
-      });
-      const timer = setTimeout(() => finish(new Error("15분 안에 로그인이 끝나지 않았습니다.")), 15 * 60 * 1000);
-      const finish = (err) => {
-        clearTimeout(timer);
-        server.close();
-        this.pendingLogin = null;
-        err ? reject(err) : resolve();
-      };
-      server.on("error", (e) => finish(new Error(`로그인 콜백 포트 ${PORT}를 열 수 없습니다: ${e.message}`)));
-      server.listen(PORT, "127.0.0.1");
-    });
+    let resolveDone, rejectDone, server;
+    const done = new Promise((resolve, reject) => { resolveDone=resolve; rejectDone=reject; });
     done.catch(() => {});
-    this.pendingLogin = { url: url.toString(), done };
-    openBrowser(url.toString());
+    const timer = setTimeout(() => finish(new Error("15분 안에 로그인이 끝나지 않았습니다.")), 15 * 60 * 1000);
+    timer.unref?.();
+    const finish = (error) => {
+      clearTimeout(timer); server?.close(); this.pendingLogin=null;
+      error ? rejectDone(error) : resolveDone();
+    };
+    this.pendingLogin = { url:url.toString(), done, state, verifier, resource, as, client, finish };
+    if (!this.publicBase) {
+      server = http.createServer(async (req,res) => {
+        const u = new URL(req.url, REDIRECT);
+        if (u.pathname !== '/callback') { res.writeHead(404); res.end(); return; }
+        try {
+          await this.completeLogin(u);
+          res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});
+          res.end(page('연결 완료', '이 창을 닫고 무덱스로 돌아가세요.'));
+        } catch {
+          res.writeHead(400, {'Content-Type':'text/html; charset=utf-8'});
+          res.end(page('로그인하지 못했습니다', '무덱스로 돌아가 다시 연결해 주세요.'));
+        }
+      });
+      server.on('error',e=>finish(new Error(`로그인 콜백 포트 ${PORT}를 열 수 없습니다: ${e.message}`)));
+      server.listen(PORT,'127.0.0.1');
+      openBrowser(url.toString());
+    }
     return url.toString();
+  }
+
+  async completeLogin(url) {
+    const p=this.pendingLogin;
+    if (!p || url.searchParams.get('state') !== p.state) throw new Error('OAuth state 상태가 일치하지 않습니다.');
+    try {
+      const code=url.searchParams.get('code');
+      if (!code) throw new Error('로그인이 취소되었거나 승인 코드가 없습니다.');
+      const tok=await getJson(p.as.token_endpoint, {
+        method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:this.redirect,client_id:p.client.client_id,code_verifier:p.verifier,resource:p.resource}),
+      });
+      if (tok.status >= 300 || !tok.body.access_token) throw new Error(`토큰 교환 실패 ${tok.status}`);
+      this.saveToken({...tok.body, obtained_at:Date.now(),token_endpoint:p.as.token_endpoint,client_id:p.client.client_id,resource:p.resource});
+      this.session=null;this.authIssue=null;
+      await this.verifyConnection();
+      p.finish();
+    } catch(e) {p.finish(e);throw e;}
   }
 
   async refreshIfNeeded() {
@@ -154,7 +173,7 @@ export class McpClient {
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: t.client_id, resource: t.resource }),
     });
     if (r.status >= 300) { this.logout(); throw new Error(`${this.label} 로그인이 만료되었습니다. 다시 연결해 주세요.`); }
-    this.saveToken({ ...t, ...r.body, obtained_at: Date.now() });
+    this.saveToken({ ...t, ...r.body, obtained_at: Date.now() },{refresh:true});
     this.session = null;
   }
 
@@ -193,19 +212,28 @@ export class McpClient {
     await this.rpc("notifications/initialized", null, true);
   }
 
+  async verifyConnection() {}
+
   // 도구 호출. 결과는 structuredContent가 있으면 그것, 없으면 텍스트를 JSON으로 읽어 본다.
   async call(name, args = {}) {
     await this.ensureSession();
     let res;
     try { res = await this.rpc("tools/call", { name, arguments: args }); }
     catch (e) {
-      if (!/session/i.test(e.message)) throw e;
-      this.session = null;
-      await this.ensureSession();
-      res = await this.rpc("tools/call", { name, arguments: args });
+      if (/session/i.test(e.message)) this.session=null;
+      // The server may have completed a paid/destructive call before the connection failed.
+      throw e;
     }
     const text = (res.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
+    const details=res.structuredContent??(()=>{try{return JSON.parse(text);}catch{return null;}})();
+    if(this.url===MCP_URL && (res.isError||details?.error) && /Your Higgsfield session has expired|FNF API .*?\(401\)/i.test(res.isError?text+' '+JSON.stringify(details):JSON.stringify(details.error))) {
+      const message='힉스필드가 인증을 거절했습니다. 다시 로그인한 직후에도 반복된다면 힉스필드 측 인증 처리 문제일 수 있습니다. 영상 파일을 직접 올려 편집하거나 잠시 뒤 연결 확인을 눌러 주세요.';
+      this.authIssue={code:'higgsfield_session_rejected',message,request_id:details?.request_id??null};
+      throw Object.assign(new Error(message),this.authIssue);
+    }
     if (res.isError) throw new Error(`${this.label} ${name}: ${text.slice(0, 400)}`);
+    if(details?.error)throw new Error(`${this.label} ${name}: ${typeof details.error==='string'?details.error:JSON.stringify(details.error)}`);
+    this.authIssue=null;
     if (res.structuredContent) return res.structuredContent;
     try { return JSON.parse(text); } catch { return { text }; }
   }
@@ -250,5 +278,6 @@ function page(title, msg) {
 // 무덱스의 생성 도구가 쓰는 힉스필드 연결
 export class Higgsfield extends McpClient {
   constructor(dataDir) { super(dataDir, { url: MCP_URL, key: "hf", label: "힉스필드" }); }
+  async verifyConnection() {await this.balance();}
 }
 export const HIGGSFIELD_MCP_URL = MCP_URL;

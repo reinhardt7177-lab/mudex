@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>무덱스 · 강사 입장</title><link rel="stylesheet" href="/cloud-login.css"></head>
+<body><main>
+  <a class="brand" href="/" aria-label="무덱스 홈"><svg width="38" height="38" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8" fill="#9b8cff"/><path d="M9.5 21.5V9l6 6.5 6-6.5v12.5" stroke="#17141f" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><strong>무덱스</strong></a>
+  <nav class="role-nav" aria-label="입장 구분"><a href="/">연수생 입장</a><a href="/instructor/login" aria-current="page">강사 입장</a></nav>
+  <h1>강사로 입장하기</h1><p>강사용 입장 코드로 로그인하세요.<br>연수생 코드 발급과 사용 현황을 관리합니다.</p>
+  <form id="login" data-role="instructor"><label for="code">강사 입장 코드</label><input id="code" name="code" type="password" autocomplete="current-password" spellcheck="false" placeholder="강사용 입장 코드" required maxlength="256" aria-describedby="error"><button type="submit">강사 입장 <span aria-hidden="true">→</span></button><p id="error" role="status" aria-live="polite"></p></form>
+  <p class="note">연수생에게 배부하는 MDX 코드는<br>연수생 입장 화면에 넣어 주세요.</p>
+</main><script type="module" src="/cloud-login.js"></script></body></html>

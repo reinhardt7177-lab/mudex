@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>무덱스 · 입장</title><link rel="stylesheet" href="/cloud-login.css"></head>
+<body><main>
+  <a class="brand" href="/" aria-label="무덱스 홈"><svg width="38" height="38" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8" fill="#9b8cff"/><path d="M9.5 21.5V9l6 6.5 6-6.5v12.5" stroke="#17141f" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><strong>무덱스</strong></a>
+  <nav class="role-nav" aria-label="입장 구분"><a href="/" aria-current="page">연수생 입장</a><a href="/instructor/login">강사 입장</a></nav>
+  <h1>영상 작업실에 입장하기</h1><p>강사님이 나눠 준 코드로 시작하세요.<br>같은 코드로 다시 입장하면 작업이 이어집니다.</p>
+  <form id="login"><label for="code">연수생 코드</label><input id="code" name="code" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="MDX-XXXX-XXXX" required maxlength="13" aria-describedby="error"><button type="submit">작업실 열기 <span aria-hidden="true">→</span></button><p id="error" role="status" aria-live="polite"></p></form>
+  <p class="note">힉스필드 계정은 입장한 뒤 연결할 수 있습니다.<br>영상과 작업 기록은 클라우드에 저장됩니다.</p>
+</main><script type="module" src="/cloud-login.js"></script></body></html>
