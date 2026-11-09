@@ -11,20 +11,31 @@ import { Workspace, probe, measureLoudness } from "./ffmpeg_tools.mjs";
 import { runAgent, relayStatus, DEFAULT_RELAY, DEFAULT_MODEL, DEFAULT_EFFORT } from "./agent.mjs";
 import { Higgsfield } from "./higgsfield.mjs";
 import { Connectors, practiceLoginPage, SAFE_TOOLS } from "./connectors.mjs";
+import { CloudStorage } from './cloud-storage.mjs';
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(APP_DIR, "..");
 const UI_DIR = path.join(ROOT, "ui");
-const DATA = path.join(ROOT, "data");
-const JOBS = path.join(ROOT, "작업");
+const CLOUD = !!process.env.MUDEX_PUBLIC_URL;
+const INSTANCE_ID = crypto.randomUUID();
+const PERSIST = path.resolve(process.env.MUDEX_DATA_ROOT ?? ROOT);
+const DATA = path.join(PERSIST, "data");
+const JOBS = path.join(PERSIST, CLOUD ? 'jobs' : '작업');
 const argv = process.argv.slice(2);
-const PORT = Number(argv[argv.indexOf("--port") + 1]) || 4870;
+const PORT = Number(process.env.PORT) || Number(argv[argv.indexOf("--port") + 1]) || 4870;
+if (CLOUD && !process.env.MUDEX_STORE_URL) throw new Error('클라우드 파일 저장소 설정이 필요합니다.');
+const cloudStore = CLOUD ? new CloudStorage(PERSIST, process.env.MUDEX_STORE_URL, process.env.MUDEX_STORE_TOKEN, fetch, key => {
+  const parts=key.split('/');
+  return !(parts[0]==='jobs' && parts[2]==='out' && running.has(parts[1]));
+}) : null;
+await cloudStore?.restore();
 fs.mkdirSync(DATA, { recursive: true });
 fs.mkdirSync(JOBS, { recursive: true });
 
 const SETTINGS_FILE = path.join(DATA, "settings.json");
 const settings = fs.existsSync(SETTINGS_FILE) ? JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) : {};
 const saveSettings = () => fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+if (!settings.code && process.env.MUDEX_CODE) { settings.code=process.env.MUDEX_CODE; saveSettings(); }
 const relay = () => settings.relay ?? DEFAULT_RELAY;
 const hf = new Higgsfield(DATA);
 const connectors = new Connectors(DATA, hf, (ev) => broadcastAll({ type: "connectors_changed", ...ev }));
@@ -108,12 +119,15 @@ async function startRun(id, text) {
       verify = { file: out, ...info, loudness: info.has_audio ? await measureLoudness(ws, out) : null, size: fs.statSync(ws.p(out)).size };
       touchJob(id, { thumb: out });
     }
+    running.delete(id);
+    await cloudStore?.sync();
     emit(id, { type: "done", verify, cost_usd: res.totalCost, seconds: Math.round((Date.now() - t0) / 1000) });
   } catch (e) {
     emit(id, { type: "error", message: e.message });
   } finally {
     running.delete(id);
     emit(id, { type: "status", running: false });
+    await cloudStore?.sync().catch(e => broadcastAll({type:'error',message:e.message}));
   }
 }
 
@@ -157,7 +171,9 @@ async function thumb(id, rel) {
 }
 
 // ---------- HTTP ----------
-function sendJson(res, status, body) {
+async function sendJson(res, status, body) {
+  try { await cloudStore?.sync(); }
+  catch(e) { status=503; body={error:e.message}; }
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   res.end(JSON.stringify(body));
 }
@@ -198,14 +214,27 @@ async function state() {
       .then((b) => { s.hf.credits = b.credits; s.hf.plan = b.subscription_plan_type; })
       .catch((e) => { s.hf.error = e.message; s.hf.logged_in = hf.loggedIn; }),
   ]);
-  return s;
+  return {...s, cloud:CLOUD, instance_id:INSTANCE_ID, storage_error:cloudStore?.error ?? null};
 }
 
 const routes = [
+  ["GET", /^\/health$/, async (req,res) => sendJson(res,200,{ok:true,running:running.size})],
+  ["POST", /^\/__cloud\/flush$/, async (req,res) => {
+    if (running.size) return sendJson(res,409,{error:'영상 작업이 진행 중입니다.'});
+    await cloudStore?.sync();
+    return sendJson(res,200,{ok:true});
+  }],
+  ["GET", /^\/oauth\/callback\/(hf|mcp_[a-f0-9]+)$/, async (req,res,[,key]) => {
+    await connectors.completeLogin(key,new URL(req.url,process.env.MUDEX_PUBLIC_URL ?? `http://127.0.0.1:${PORT}`));
+    await cloudStore?.sync();
+    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
+    res.end('<!doctype html><html lang="ko"><meta charset="utf-8"><title>무덱스 연결 완료</title><p>연결되었습니다. 이 창을 닫고 무덱스로 돌아가세요.</p><a href="/">무덱스로 돌아가기</a></html>');
+  }],
   ["GET", /^\/api\/state$/, async (req, res) => sendJson(res, 200, await state())],
   ["POST", /^\/api\/code$/, async (req, res) => {
     const { code } = await readJsonBody(req);
     const c = String(code ?? "").trim().toUpperCase();
+    if (CLOUD && c!==process.env.MUDEX_CODE) return sendJson(res,400,{error:'다른 강사 코드는 입장 화면에서 연결해 주세요.'});
     const r = await relayStatus(c, relay()).catch((e) => ({ ok: false, body: { error: { message: e.message } } }));
     if (!r.ok) return sendJson(res, 400, { error: r.body.error?.message ?? "코드를 확인하지 못했습니다." });
     settings.code = c; saveSettings();
@@ -221,7 +250,7 @@ const routes = [
   // 커넥터(원격 MCP): 추가 → 연결(진짜 OAuth / 연습) → 도구 목록 → 조회 도구 눌러 보기
   ["GET", /^\/api\/connectors$/, async (req, res) => sendJson(res, 200, { connectors: connectors.view(), safe_tools: SAFE_TOOLS })],
   ["POST", /^\/api\/connectors$/, async (req, res) => sendJson(res, 200, connectors.add(await readJsonBody(req)))],
-  ["POST", /^\/api\/connectors\/([^/]+)\/connect$/, async (req, res, [, id]) => sendJson(res, 200, await connectors.connect(id, `http://127.0.0.1:${PORT}`))],
+  ["POST", /^\/api\/connectors\/([^/]+)\/connect$/, async (req, res, [, id]) => sendJson(res, 200, await connectors.connect(id, process.env.MUDEX_PUBLIC_URL ?? `http://127.0.0.1:${PORT}`))],
   ["POST", /^\/api\/connectors\/([^/]+)\/disconnect$/, async (req, res, [, id]) => { connectors.disconnect(id); broadcastAll({ type: "connectors_changed", id }); sendJson(res, 200, { ok: true }); }],
   ["POST", /^\/api\/connectors\/([^/]+)\/remove$/, async (req, res, [, id]) => { connectors.remove(id); broadcastAll({ type: "connectors_changed", id }); sendJson(res, 200, { ok: true }); }],
   ["GET", /^\/api\/connectors\/([^/]+)\/tools$/, async (req, res, [, id]) => sendJson(res, 200, { tools: await connectors.tools(id) })],
@@ -238,6 +267,7 @@ const routes = [
   ["POST", /^\/practice\/approve$/, async (req, res) => {
     const id = new URL(req.url, "http://x").searchParams.get("c");
     connectors.practiceApprove(id);
+    await cloudStore?.sync();
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); res.end(practiceLoginPage(connectors.get(id), true));
   }],
   ["POST", /^\/api\/jobs$/, async (req, res) => {
@@ -257,8 +287,19 @@ const routes = [
   ["GET", /^\/api\/jobs\/([^/]+)\/files$/, async (req, res, [, id]) => sendJson(res, 200, await listFiles(id))],
   ["PUT", /^\/api\/jobs\/([^/]+)\/upload$/, async (req, res, [, id]) => {
     const name = path.basename(decodeURIComponent(new URL(req.url, "http://x").searchParams.get("name") ?? "file"));
-    const dst = path.join(jobDir(id), name);
-    await new Promise((resolve, reject) => { const w = fs.createWriteStream(dst); req.pipe(w); w.on("finish", resolve); w.on("error", reject); });
+    if (!name || name.startsWith('.') || /[\\/\x00-\x1f]/.test(name)) return sendJson(res,400,{error:'파일 이름을 확인해 주세요.'});
+    const dst = new Workspace(jobDir(id)).p(name);
+    const uploadUrl=new URL(req.url,'http://localhost');
+    const offset=Number(uploadUrl.searchParams.get('offset') ?? 0);
+    const partial=dst+'.part';
+    if (!Number.isSafeInteger(offset) || offset<0 || offset>2*1024**3) return sendJson(res,400,{error:'파일 크기 한도는 2GB입니다.'});
+    if (offset && (!fs.existsSync(partial) || fs.statSync(partial).size!==offset)) return sendJson(res,409,{error:'업로드 순서가 맞지 않습니다. 다시 올려 주세요.'});
+    await new Promise((resolve, reject) => {
+      const w=fs.createWriteStream(partial,{flags:offset?'a':'w'});let size=offset;
+      req.on('data',chunk=>{size+=chunk.length;if(size>2*1024**3)req.destroy(new Error('파일 크기 한도는 2GB입니다.'));});
+      req.on('error',e=>{w.destroy();reject(e);});req.pipe(w);w.on('finish',resolve);w.on('error',reject);
+    });
+    if (uploadUrl.searchParams.get('final')!=='false') fs.renameSync(partial,dst);
     touchJob(id);
     sendJson(res, 200, { ok: true, file: name });
   }],
@@ -282,6 +323,7 @@ const routes = [
   }],
   ["POST", /^\/api\/jobs\/([^/]+)\/stop$/, async (req, res, [, id]) => { running.get(id)?.ac.abort(); sendJson(res, 200, { ok: true }); }],
   ["POST", /^\/api\/jobs\/([^/]+)\/open$/, async (req, res, [, id]) => {
+    if (CLOUD) return sendJson(res,400,{error:'파일 탭에서 결과를 내려받아 주세요.'});
     spawn("explorer.exe", [jobDir(id)], { detached: true, stdio: "ignore" }).unref();
     sendJson(res, 200, { ok: true });
   }],
@@ -332,11 +374,14 @@ server.on("error", (e) => {
   if (!argv.includes("--no-open")) openAppWindow(`http://127.0.0.1:${PORT}/`);
   setTimeout(() => process.exit(0), 500);
 });
-server.listen(PORT, "127.0.0.1", () => {
+server.listen(PORT, CLOUD ? '0.0.0.0' : "127.0.0.1", () => {
   const url = `http://127.0.0.1:${PORT}/`;
   console.log(`무덱스 준비됨: ${url}`);
-  if (!argv.includes("--no-open")) openAppWindow(url);
+  if (!CLOUD && !argv.includes("--no-open")) openAppWindow(url);
 });
+
+if (CLOUD) setInterval(()=>cloudStore.sync().catch(e=>console.error(e.message)),15000).unref();
+export { server };
 
 // 엣지를 주소창 없는 앱 창으로 연다. 없으면 기본 브라우저.
 function openAppWindow(url) {

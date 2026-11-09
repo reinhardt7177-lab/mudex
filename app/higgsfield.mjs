@@ -21,15 +21,18 @@ async function getJson(url, opts) {
 }
 
 export function openBrowser(url) {
+  if (process.env.MUDEX_PUBLIC_URL || process.env.MUDEX_NO_OPEN) return;
   // cmd의 start는 &에서 끊기므로 rundll32로 연다
-  spawn("rundll32", ["url.dll,FileProtocolHandler", url], { detached: true, stdio: "ignore" }).unref();
+  spawn("rundll32", ["url.dll,FileProtocolHandler", url], { detached: true, stdio: "ignore", windowsHide: true }).unref();
 }
 
 export class McpClient {
-  constructor(dataDir, { url = MCP_URL, key = "hf", label = "힉스필드" } = {}) {
+  constructor(dataDir, { url = MCP_URL, key = "hf", label = "힉스필드", publicBase = process.env.MUDEX_PUBLIC_URL } = {}) {
     this.dataDir = dataDir;
     this.url = url;
     this.label = label;
+    this.publicBase = publicBase;
+    this.redirect = publicBase ? `${publicBase}/oauth/callback/${encodeURIComponent(key)}` : REDIRECT;
     fs.mkdirSync(dataDir, { recursive: true });
     this.tokenFile = path.join(dataDir, `${key}_token.json`);
     this.clientFile = path.join(dataDir, `${key}_client.json`);
@@ -66,21 +69,24 @@ export class McpClient {
   }
 
   async register(as) {
-    if (fs.existsSync(this.clientFile)) return JSON.parse(fs.readFileSync(this.clientFile, "utf8"));
+    if (fs.existsSync(this.clientFile)) {
+      const saved = JSON.parse(fs.readFileSync(this.clientFile, "utf8"));
+      if (saved.mudex_redirect === this.redirect || (!this.publicBase && !saved.mudex_redirect)) return saved;
+    }
     if (!as.registration_endpoint) throw new Error(`${this.label}: 이 서버는 자동 등록(동적 클라이언트 등록)을 지원하지 않습니다.`);
     const r = await getJson(as.registration_endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         client_name: "Mudex (무덱스)",
-        redirect_uris: [REDIRECT],
+        redirect_uris: [this.redirect],
         grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],
         token_endpoint_auth_method: "none",
       }),
     });
     if (r.status >= 300) throw new Error(`${this.label}가 클라이언트 등록을 거절했습니다: ` + JSON.stringify(r.body).slice(0, 200));
-    fs.writeFileSync(this.clientFile, JSON.stringify(r.body));
+    fs.writeFileSync(this.clientFile, JSON.stringify({ ...r.body, mudex_redirect: this.redirect }));
     return r.body;
   }
 
@@ -95,7 +101,7 @@ export class McpClient {
     url.search = new URLSearchParams({
       response_type: "code",
       client_id: client.client_id,
-      redirect_uri: REDIRECT,
+      redirect_uri: this.redirect,
       scope: scopes.join(" "),
       state,
       code_challenge: b64url(crypto.createHash("sha256").update(verifier).digest()),
@@ -103,44 +109,50 @@ export class McpClient {
       resource,
     }).toString();
 
-    const done = new Promise((resolve, reject) => {
-      const server = http.createServer(async (req, res) => {
-        const u = new URL(req.url, REDIRECT);
-        if (u.pathname !== "/callback") { res.writeHead(404); res.end(); return; }
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        const code = u.searchParams.get("code");
-        if (!code || u.searchParams.get("state") !== state) {
-          res.end(page("로그인하지 못했습니다", "무덱스 화면으로 돌아가 다시 눌러 주세요."));
-          finish(new Error(u.searchParams.get("error_description") ?? u.searchParams.get("error") ?? "콜백 오류"));
-          return;
-        }
-        res.end(page(`${this.label} 연결 완료`, "이 창을 닫고 무덱스로 돌아가세요."));
-        try {
-          const tok = await getJson(as.token_endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT, client_id: client.client_id, code_verifier: verifier, resource }),
-          });
-          if (tok.status >= 300) throw new Error("토큰 교환 실패 " + tok.status);
-          this.saveToken({ ...tok.body, obtained_at: Date.now(), token_endpoint: as.token_endpoint, client_id: client.client_id, resource });
-          this.session = null;
-          finish();
-        } catch (e) { finish(e); }
-      });
-      const timer = setTimeout(() => finish(new Error("15분 안에 로그인이 끝나지 않았습니다.")), 15 * 60 * 1000);
-      const finish = (err) => {
-        clearTimeout(timer);
-        server.close();
-        this.pendingLogin = null;
-        err ? reject(err) : resolve();
-      };
-      server.on("error", (e) => finish(new Error(`로그인 콜백 포트 ${PORT}를 열 수 없습니다: ${e.message}`)));
-      server.listen(PORT, "127.0.0.1");
-    });
+    let resolveDone, rejectDone, server;
+    const done = new Promise((resolve, reject) => { resolveDone=resolve; rejectDone=reject; });
     done.catch(() => {});
-    this.pendingLogin = { url: url.toString(), done };
-    openBrowser(url.toString());
+    const timer = setTimeout(() => finish(new Error("15분 안에 로그인이 끝나지 않았습니다.")), 15 * 60 * 1000);
+    timer.unref?.();
+    const finish = (error) => {
+      clearTimeout(timer); server?.close(); this.pendingLogin=null;
+      error ? rejectDone(error) : resolveDone();
+    };
+    this.pendingLogin = { url:url.toString(), done, state, verifier, resource, as, client, finish };
+    if (!this.publicBase) {
+      server = http.createServer(async (req,res) => {
+        const u = new URL(req.url, REDIRECT);
+        if (u.pathname !== '/callback') { res.writeHead(404); res.end(); return; }
+        try {
+          await this.completeLogin(u);
+          res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});
+          res.end(page('연결 완료', '이 창을 닫고 무덱스로 돌아가세요.'));
+        } catch {
+          res.writeHead(400, {'Content-Type':'text/html; charset=utf-8'});
+          res.end(page('로그인하지 못했습니다', '무덱스로 돌아가 다시 연결해 주세요.'));
+        }
+      });
+      server.on('error',e=>finish(new Error(`로그인 콜백 포트 ${PORT}를 열 수 없습니다: ${e.message}`)));
+      server.listen(PORT,'127.0.0.1');
+      openBrowser(url.toString());
+    }
     return url.toString();
+  }
+
+  async completeLogin(url) {
+    const p=this.pendingLogin;
+    if (!p || url.searchParams.get('state') !== p.state) throw new Error('OAuth state 상태가 일치하지 않습니다.');
+    try {
+      const code=url.searchParams.get('code');
+      if (!code) throw new Error('로그인이 취소되었거나 승인 코드가 없습니다.');
+      const tok=await getJson(p.as.token_endpoint, {
+        method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:this.redirect,client_id:p.client.client_id,code_verifier:p.verifier,resource:p.resource}),
+      });
+      if (tok.status >= 300 || !tok.body.access_token) throw new Error(`토큰 교환 실패 ${tok.status}`);
+      this.saveToken({...tok.body, obtained_at:Date.now(),token_endpoint:p.as.token_endpoint,client_id:p.client.client_id,resource:p.resource});
+      this.session=null;p.finish();
+    } catch(e) {p.finish(e);throw e;}
   }
 
   async refreshIfNeeded() {

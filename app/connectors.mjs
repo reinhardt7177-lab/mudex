@@ -87,6 +87,11 @@ export class Connectors {
     return { url };
   }
 
+  async completeLogin(key, url) {
+    const client = key === 'hf' ? this.hf : this.client(this.get(key.replace(/^mcp_/, '')));
+    return client.completeLogin(url);
+  }
+
   practiceApprove(id) {
     const c = this.get(id);
     c.practice_connected = true;

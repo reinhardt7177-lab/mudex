@@ -7,6 +7,7 @@ const fileUrl = (rel) => `/f/${encodeURIComponent(S.jobId)}/${enc(rel)}`;
 const thumbUrl = (rel) => `/thumb/${encodeURIComponent(S.jobId)}/${enc(rel)}`;
 const api = async (method, url, body) => {
   const r = await fetch(url, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  if (r.status===401) { location.href='/'; throw new Error('강사 코드로 다시 입장해 주세요.'); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error ?? `오류 ${r.status}`);
   return j;
@@ -17,6 +18,13 @@ function toast(msg, ms = 2600) {
 }
 
 const S = { st: null, jobId: new URLSearchParams(location.search).get("job") ?? localStorage.getItem("mudex.job"), job: null, es: null, tab: "preview", cards: new Map(), plan: null, runCost: 0, gens: new Map(), sheet: null, verify: null, running: false, lastTrimCard: null };
+function closeMobilePanels() {
+  $('.app').classList.remove('show-side','show-preview');
+  $('#mobileSide')?.setAttribute('aria-expanded','false');$('#mobilePreview')?.setAttribute('aria-expanded','false');
+}
+for(const [id,cls] of [['mobileSide','show-side'],['mobilePreview','show-preview']]) $('#'+id)?.addEventListener('click',()=>{
+  const show=!$('.app').classList.contains(cls);closeMobilePanels();if(show){$('.app').classList.add(cls);$('#'+id).setAttribute('aria-expanded','true');}
+});
 
 // ---------- 왼쪽 ----------
 function renderSide() {
@@ -31,7 +39,7 @@ function renderSide() {
         ${j.thumb ? `<img src="/thumb/${encodeURIComponent(j.id)}/${enc(j.thumb)}" alt="">` : `<div class="ph"></div>`}
         <span class="nm">${esc(j.name)}</span>${j.id === S.jobId && S.running ? `<span class="dot"></span>` : ""}
       </div>`).join("")}</div>`).join("") || `<div class="muted" style="padding:0 10px">아직 작업이 없어요.</div>`;
-  for (const el of document.querySelectorAll(".job")) el.onclick = () => openJob(el.dataset.id);
+  for (const el of document.querySelectorAll(".job")) el.onclick = () => {closeMobilePanels();openJob(el.dataset.id);};
 
   const hf = st?.hf ?? {};
   const rl = st?.relay;
@@ -46,7 +54,8 @@ function renderSide() {
       : `<div class="conn-row"><span class="led"></span><span>강사 코드</span><span class="v">$${(rl?.remaining_usd ?? 0).toFixed(2)} 남음</span>
          <div class="meter"><i style="width:${rl ? (rl.remaining_usd / rl.budget_usd) * 100 : 0}%;background:var(--mint)"></i></div></div>
          <div class="conn-foot"><span class="mono">${esc(st.code_hint)}</span><span>${rl?.expires_at ? new Date(rl.expires_at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }) + "까지" : ""}</span></div>`;
-  $("#conn").innerHTML = hfRow + codeRow;
+  $("#conn").innerHTML = hfRow + codeRow + (st?.cloud ? '<button class="chip" id="cloudLogout" style="margin:12px">저장하고 나가기</button>' : '');
+  $('#cloudLogout')?.addEventListener('click',async()=>{try {await api('POST','/cloud/logout');localStorage.removeItem('mudex.job');location.href='/';}catch(e){toast(e.message);}});
   $("#hfLogin")?.addEventListener("click", () => openConnectors());
   $("#setCode")?.addEventListener("click", askCode);
 }
@@ -77,7 +86,10 @@ function modal({ title, text, placeholder, value = "", ok = "확인", onOk }) {
 function askCode() {
   modal({
     title: "강사 코드 넣기", text: "강사님이 나눠 준 코드를 넣어 주세요. 예) MDX-AB12-CD34", placeholder: "MDX-XXXX-XXXX", ok: "연결",
-    onOk: async (v) => { await api("POST", "/api/code", { code: v }); await refreshState(); toast("강사 코드가 연결됐어요."); },
+    onOk: async (v) => {
+      if(S.st?.cloud){await api('POST','/cloud/login',{code:v});localStorage.removeItem('mudex.job');location.href='/';return;}
+      await api("POST", "/api/code", { code: v }); await refreshState(); toast("강사 코드가 연결됐어요.");
+    },
   });
 }
 
@@ -93,7 +105,7 @@ function renderTop() {
   if (!S.job) { $("#top").innerHTML = `<h1>무덱스</h1><span class="sp"></span>`; return; }
   const files = S.job.files ?? [];
   const nv = files.filter((f) => f.kind === "video").length, na = files.filter((f) => f.kind === "audio").length, ni = files.filter((f) => f.kind === "image").length;
-  $("#top").innerHTML = `<h1>${esc(S.jobId)}</h1><span class="path">${esc(S.job.dir)}</span><span class="sp"></span>
+  $("#top").innerHTML = `<h1>${esc(S.jobId)}</h1><span class="path">${S.st?.cloud ? '클라우드 작업공간' : esc(S.job.dir)}</span><span class="sp"></span>
     <span class="pill">영상 ${nv} · 음악 ${na} · 사진 ${ni}</span>
     ${S.running ? `<span class="pill violet">● 작업 중</span>` : `<span class="pill mint">● 대기</span>`}`;
 }
@@ -453,8 +465,15 @@ async function uploadFiles(list) {
   if (!S.jobId) return toast("먼저 작업을 만들어 주세요.");
   for (const f of list) {
     toast(`올리는 중: ${f.name}`);
-    const r = await fetch(`/api/jobs/${encodeURIComponent(S.jobId)}/upload?name=${encodeURIComponent(f.name)}`, { method: "PUT", body: f });
-    if (!r.ok) toast(`실패: ${f.name}`);
+    if (f.size>2*1024**3) {toast('파일 하나의 크기는 2GB까지 지원합니다.');continue;}
+    try {
+      const chunkSize=16*1024*1024;
+      for(let offset=0;offset<f.size || (offset===0 && f.size===0);offset+=chunkSize) {
+        const end=Math.min(f.size,offset+chunkSize);
+        const r=await fetch(`/api/jobs/${encodeURIComponent(S.jobId)}/upload?name=${encodeURIComponent(f.name)}&offset=${offset}&final=${end===f.size}`,{method:'PUT',body:f.slice(offset,end)});
+        if(!r.ok) throw new Error((await r.json()).error ?? `업로드 오류 ${r.status}`);
+      }
+    } catch(e) {toast(`${f.name}: ${e.message}`,5000);}
   }
   toast(`${list.length}개 넣었어요.`);
   await refreshJob();
@@ -563,7 +582,13 @@ function renderCxList() {
   CX.el.querySelectorAll(".acts button").forEach((b) => b.onclick = async () => {
     const id = b.parentElement.dataset.id, a = b.dataset.a;
     try {
-      if (a === "connect") { b.disabled = true; b.textContent = "창 여는 중…"; await api("POST", `/api/connectors/${id}/connect`); toast("브라우저에서 로그인하고 '허용'을 눌러 주세요.", 5000); await loadConnectors(); }
+      if (a === "connect") {
+        const popup=S.st?.cloud ? window.open('about:blank','mudex-login','popup,width=600,height=780') : null;
+        b.disabled=true;b.textContent='창 여는 중…';
+        try {const j=await api('POST',`/api/connectors/${id}/connect`);if(popup)popup.location.href=j.url;else if(S.st?.cloud)location.href=j.url;}
+        catch(e) {popup?.close();throw e;}
+        toast("브라우저에서 로그인하고 '허용'을 눌러 주세요.",5000);await loadConnectors();
+      }
       if (a === "disconnect") { await api("POST", `/api/connectors/${id}/disconnect`); await loadConnectors(); }
       if (a === "remove") { if (confirm("이 커넥터를 목록에서 뺄까요? 연결도 끊깁니다.")) { await api("POST", `/api/connectors/${id}/remove`); await loadConnectors(); } }
       if (a === "tools") {

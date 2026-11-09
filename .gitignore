@@ -15,3 +15,4 @@ mockups/*.png
 시연/
 # 압축 배포판에 넣는 실행 파일(릴리스에만 올림)
 bin/
+.wrangler/
