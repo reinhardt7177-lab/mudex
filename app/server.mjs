@@ -1,4 +1,4 @@
-// 무덱스 로컬 서버: 화면(ui/)을 내주고, 작업 폴더·에이전트·힉스필드 로그인을 다룬다.
+// 무덱스 로컬 서버: 화면(ui/)을 내주고, 프로젝트 폴더·에이전트·커넥터(MCP)를 다룬다.
 // 127.0.0.1에만 열린다. 의존성 없음(Node 20+).
 //   node app/server.mjs [--port 4870] [--no-open]
 import http from "node:http";
@@ -9,6 +9,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { Workspace, probe, measureLoudness } from "./ffmpeg_tools.mjs";
 import { runAgent, relayStatus, DEFAULT_RELAY, DEFAULT_MODEL, DEFAULT_EFFORT } from "./agent.mjs";
+import { SKILLS } from "./skills.mjs";
 import { Higgsfield } from "./higgsfield.mjs";
 import { Connectors, practiceLoginPage, SAFE_TOOLS } from "./connectors.mjs";
 
@@ -85,6 +86,9 @@ async function startRun(id, text) {
   const ctx = {
     emit: (ev) => emit(id, ev),
     hf,
+    connectors,
+    approval: settings.approval ?? "ask",
+    session: {},
     signal: ac.signal,
     ask: (kind, payload) => new Promise((resolve, reject) => {
       const askId = crypto.randomUUID();
@@ -95,7 +99,7 @@ async function startRun(id, text) {
   };
   const t0 = Date.now();
   try {
-    const res = await runAgent({ code: settings.code, relay: relay(), model: settings.model ?? DEFAULT_MODEL, effort: settings.effort ?? DEFAULT_EFFORT, ws, instruction: text, messages, ctx });
+    const res = await runAgent({ code: settings.code, relay: relay(), model: settings.model ?? DEFAULT_MODEL, effort: settings.effort ?? DEFAULT_EFFORT, skills: settings.skills ?? {}, ws, instruction: text, messages, ctx });
     // 대화는 이어서 쓰되 너무 길어지지 않게 최근 60개만 남긴다(도구 응답 짝이 깨지지 않게 user에서 자른다)
     let keep = res.messages;
     if (keep.length > 60) { const i = keep.findIndex((m, k) => k >= keep.length - 60 && m.role === "user"); keep = keep.slice(i); }
@@ -129,14 +133,14 @@ async function listFiles(id) {
   const out = [];
   for (const f of fs.readdirSync(ws.dir, { recursive: true }).map(String)) {
     const rel = f.split(path.sep).join("/");
-    if (/^(\.mudex|tmp|review)(\/|$)/.test(rel)) continue;
+    if (/^(\.mudex|tmp|review|node_modules|\.git)(\/|$)/.test(rel)) continue;
     const abs = path.join(ws.dir, f);
     if (!fs.statSync(abs).isFile()) continue;
     const ext = path.extname(rel).toLowerCase();
-    const kind = [".mp4", ".mov", ".webm", ".mkv", ".m4v"].includes(ext) ? "video" : [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"].includes(ext) ? "audio" : [".png", ".jpg", ".jpeg", ".webp"].includes(ext) ? "image" : null;
-    if (!kind) continue;
+    const kind = [".mp4", ".mov", ".webm", ".mkv", ".m4v"].includes(ext) ? "video" : [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"].includes(ext) ? "audio"
+      : [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"].includes(ext) ? "image" : [".html", ".htm"].includes(ext) ? "html" : "file";
     const item = { file: rel, kind, size: fs.statSync(abs).size };
-    if (kind !== "image") { try { Object.assign(item, await probe(ws, rel)); } catch {} }
+    if (kind === "video" || kind === "audio") { try { Object.assign(item, await probe(ws, rel)); } catch {} }
     out.push(item);
   }
   return out;
@@ -187,8 +191,11 @@ function serveFile(req, res, abs) {
   }
 }
 
-async function state() {
-  const s = { code_set: !!settings.code, code_hint: settings.code ? settings.code.slice(0, 8) + "····" : null, model: settings.model ?? DEFAULT_MODEL, effort: settings.effort ?? DEFAULT_EFFORT, jobs: listJobs(), hf: { logged_in: hf.loggedIn, logging_in: !!hf.pendingLogin } };
+// local=true면 바깥(중계 서버·힉스필드)에 묻지 않고 바로 돌려준다(첫 화면이 늦지 않게)
+async function state(local = false) {
+  const s = { code_set: !!settings.code, code_hint: settings.code ? settings.code.slice(0, 8) + "····" : null, model: settings.model ?? DEFAULT_MODEL, effort: settings.effort ?? DEFAULT_EFFORT, approval: settings.approval ?? "ask",
+    skills: Object.entries(SKILLS).map(([k, v]) => ({ id: k, label: v.label, summary: v.summary, on: (settings.skills ?? {})[k] !== false })), jobs: listJobs(), hf: { logged_in: hf.loggedIn, logging_in: !!hf.pendingLogin } };
+  if (local) return s;
   // 중계 서버와 힉스필드는 동시에 묻는다
   await Promise.all([
     settings.code && relayStatus(settings.code, relay())
@@ -202,7 +209,7 @@ async function state() {
 }
 
 const routes = [
-  ["GET", /^\/api\/state$/, async (req, res) => sendJson(res, 200, await state())],
+  ["GET", /^\/api\/state$/, async (req, res) => sendJson(res, 200, await state(new URL(req.url, "http://x").searchParams.has("local")))],
   ["POST", /^\/api\/code$/, async (req, res) => {
     const { code } = await readJsonBody(req);
     const c = String(code ?? "").trim().toUpperCase();
@@ -210,6 +217,13 @@ const routes = [
     if (!r.ok) return sendJson(res, 400, { error: r.body.error?.message ?? "코드를 확인하지 못했습니다." });
     settings.code = c; saveSettings();
     sendJson(res, 200, { ok: true, relay: r.body });
+  }],
+  ["POST", /^\/api\/settings$/, async (req, res) => {
+    const b = await readJsonBody(req);
+    if (b.approval) settings.approval = b.approval === "auto" ? "auto" : "ask";
+    if (b.skills) settings.skills = { ...(settings.skills ?? {}), ...b.skills };
+    saveSettings();
+    sendJson(res, 200, { ok: true });
   }],
   ["POST", /^\/api\/model$/, async (req, res) => { const { model, effort } = await readJsonBody(req); settings.model = model; settings.effort = effort; saveSettings(); sendJson(res, 200, { ok: true }); }],
   ["POST", /^\/api\/hf\/login$/, async (req, res) => {

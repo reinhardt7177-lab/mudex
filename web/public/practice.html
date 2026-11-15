@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>연습용 연결 · 무덱스</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #131217; color: #fff; font: 14px/1.6 "Pretendard", "Malgun Gothic", system-ui, sans-serif; }
+  .box { width: min(440px, 92vw); background: #171719; border: 1px solid #2a2a2e; border-radius: 10px; padding: 26px; display: grid; gap: 12px; }
+  .warn { background: #2a2416; border: 1px solid #5a4920; color: #e3b45a; border-radius: 6px; padding: 10px 12px; font-size: 13px; font-weight: 600; }
+  h2 { margin: 6px 0 0; font-size: 19px; font-weight: 600; }
+  .url { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: #a3a5ab; margin: 0; word-break: break-all; }
+  .perm { background: #131217; border: 1px solid #222224; border-radius: 6px; padding: 12px 14px; font-size: 13.5px; }
+  .perm ul { margin: 8px 0 0; padding-left: 18px; color: #c4c5c9; }
+  .acts { display: flex; gap: 8px; margin-top: 4px; }
+  button { font: inherit; font-weight: 600; padding: 9px 18px; border-radius: 6px; border: 1px solid #3a3a3e; background: transparent; color: #fff; cursor: pointer; }
+  .ok { background: #fff; color: #111; border-color: #fff; }
+  .small { font-size: 12px; color: #a3a5ab; margin: 0; }
+  .m { width: 44px; height: 44px; border-radius: 10px; background: #2ab3c6; }
+</style>
+</head>
+<body>
+<div class="box" id="box">
+  <div class="m"></div>
+  <div class="warn">연습 모드입니다. 실제 계정에 로그인하지 않고, 아무 정보도 보내지 않습니다.</div>
+  <h2 id="t">무덱스를 연결할까요?</h2>
+  <p class="url" id="u"></p>
+  <div class="perm"><b>무덱스가 할 수 있게 되는 일</b><ul><li>내 계정 잔액과 요금제 보기</li><li>내 계정으로 이미지·영상 만들기(크레딧 사용)</li><li>만든 결과 내려받기</li></ul></div>
+  <div class="acts"><button class="ok" id="ok">허용</button><button id="no">취소</button></div>
+  <p class="small">진짜 연결에서는 이 자리에 서비스의 로그인 화면이 나오고, 로그인한 다음 같은 "허용" 단계를 거칩니다.</p>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.getElementById("t").textContent = `${q.get("n") || "서비스"}에 무덱스를 연결할까요?`;
+  document.getElementById("u").textContent = q.get("u") || "";
+  document.getElementById("no").onclick = () => window.close();
+  document.getElementById("ok").onclick = () => {
+    window.opener?.postMessage({ type: "mudex-practice", id: q.get("c") }, location.origin);
+    document.getElementById("box").innerHTML = '<div class="m"></div><h2>연결 완료</h2><p class="small">연습 모드라 실제로 로그인한 것은 아닙니다. 이 창은 곧 닫힙니다.</p>';
+    setTimeout(() => window.close(), 900);
+  };
+</script>
+</body>
+</html>

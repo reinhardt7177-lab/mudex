@@ -14,8 +14,8 @@ input, textarea, select { font: inherit; color: inherit; }
 .newbtn { cursor: pointer; }
 .newbtn:hover { border-color: var(--mint); }
 .conn-row .act { font-size: 11.5px; color: var(--mint); cursor: pointer; font-weight: 600; }
-.conn-row .led.off { background: var(--muted); box-shadow: none; }
-.conn-row .led.warn { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.conn-row .led.off { background: var(--muted); }
+.conn-row .led.warn { background: var(--amber); }
 
 /* 대화: 실제로는 위에서부터 쌓고 아래로 스크롤 */
 .feed { display: block; overflow-y: auto; -webkit-mask-image: none; mask-image: none; padding: 22px 0 20px; scroll-behavior: smooth; }
@@ -64,7 +64,7 @@ input, textarea, select { font: inherit; color: inherit; }
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 22px; width: min(620px, 100%); text-align: left; }
 .steps div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 12.5px; color: var(--sub); }
 .steps b { display: block; color: var(--text); margin-bottom: 4px; }
-.steps .ok b::after { content: " ✓"; color: var(--mint); }
+.steps .ok b { color: var(--mint); }
 
 /* 오른쪽 패널 */
 .tab { cursor: pointer; }
@@ -90,7 +90,7 @@ input, textarea, select { font: inherit; color: inherit; }
 .big-sheet figcaption { font: 10.5px var(--mono); color: var(--muted); text-align: center; margin-top: 3px; }
 
 /* 모달 */
-.modal { position: fixed; inset: 0; background: rgba(5,6,8,.72); backdrop-filter: blur(6px); display: grid; place-items: center; z-index: 50; }
+.modal { position: fixed; inset: 0; background: rgba(5,6,8,.72); display: grid; place-items: center; z-index: 50; }
 .modal .box { width: min(440px, 92vw); background: var(--panel); border: 1px solid var(--line2); border-radius: 16px; padding: 22px; display: grid; gap: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
 .modal h3 { font-size: 17px; }
 .modal p { color: var(--muted); font-size: 13px; }
@@ -142,3 +142,20 @@ input, textarea, select { font: inherit; color: inherit; }
 .side .cxbtn { font-size: 12px; color: var(--sub); display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; }
 .side .cxbtn:hover { background: var(--card); color: var(--text); }
 .cx-h .btn { white-space: nowrap; flex: none; }
+
+/* 바이브코딩: 명령·미리보기 */
+.termblk { font: 11.5px/1.55 var(--mono); background: #07080a; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; color: #c9d1c9; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto; margin: 0; }
+.approve .termblk { max-height: 180px; }
+.opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.pvbar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.pvbar .sp { flex: 1; }
+.pvbar a.btn { text-decoration: none; }
+.pvframe { width: 100%; flex: 1; min-height: 520px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.pvimg { width: 100%; border-radius: 12px; border: 1px solid var(--line); cursor: zoom-in; }
+.pvcode { font: 12px/1.55 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px; white-space: pre-wrap; word-break: break-all; color: var(--sub); flex: 1; overflow: auto; margin: 0; }
+.termcard { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.termcard .th { display: flex; gap: 10px; justify-content: space-between; padding: 8px 10px; font-size: 12px; border-bottom: 1px solid var(--line); }
+.termcard .th .mono { color: var(--text); word-break: break-all; }
+.termcard pre { font: 11.5px/1.5 var(--mono); padding: 9px 10px; margin: 0; white-space: pre-wrap; word-break: break-all; color: #c9d1c9; max-height: 320px; overflow: auto; }
+.composer .chip.off { opacity: .5; }
+.frow .ic2 { font-weight: 700; }

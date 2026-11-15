@@ -1,6 +1,4 @@
 /* 무덱스 화면 시안 공용 스타일 */
-@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 :root {
   --bg: #0a0b0e;
@@ -20,7 +18,7 @@
   --amber: #f4b942;
   --amber-d: rgba(244, 185, 66, 0.12);
   --red: #ff5d5d;
-  --mono: "JetBrains Mono", "Pretendard", sans-serif;
+  --mono: "IBM Plex Mono", monospace;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
@@ -46,12 +44,12 @@ body {
 .group-t { font-size: 11.5px; color: var(--muted); padding: 0 10px; margin-bottom: 4px; font-weight: 600; }
 .job { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 9px; color: var(--sub); }
 .job img { width: 34px; height: 20px; object-fit: cover; border-radius: 4px; opacity: .85; }
-.job .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); margin-left: auto; box-shadow: 0 0 8px var(--mint); }
+.job .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); margin-left: auto; }
 .job.on { background: var(--card2); color: var(--text); }
-.job .ph { width: 34px; height: 20px; border-radius: 4px; background: linear-gradient(135deg, #262833, #1b1d24); }
+.job .ph { width: 34px; height: 20px; border-radius: 4px; background: var(--card2); }
 .conn { margin-top: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
 .conn-row { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-size: 12.5px; }
-.conn-row .led { width: 7px; height: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 6px var(--mint); }
+.conn-row .led { width: 7px; height: 7px; border-radius: 50%; background: var(--mint); }
 .conn-row .v { font: 600 12px var(--mono); }
 .meter { height: 4px; border-radius: 4px; background: var(--line); overflow: hidden; grid-column: 1 / -1; }
 .meter i { display: block; height: 100%; border-radius: 4px; }
@@ -67,7 +65,7 @@ body {
 .pill.mint { color: var(--mint); border-color: rgba(70,224,181,.35); background: var(--mint-d); }
 .pill.violet { color: var(--violet); border-color: rgba(155,140,255,.35); background: var(--violet-d); }
 /* 시안에서는 맨 아래(최신)까지 내려 둔 모습 */
-.feed { flex: 1; min-height: 0; overflow: hidden; padding: 22px 0 8px; display: flex; flex-direction: column; justify-content: flex-end; -webkit-mask-image: linear-gradient(transparent 0, #000 56px); mask-image: linear-gradient(transparent 0, #000 56px); }
+.feed { flex: 1; min-height: 0; overflow: hidden; padding: 22px 0 8px; display: flex; flex-direction: column; justify-content: flex-end; }
 .col { max-width: 720px; margin: 0 auto; padding: 0 28px; display: flex; flex-direction: column; gap: 14px; }
 .you { align-self: flex-end; max-width: 82%; background: var(--card2); border: 1px solid var(--line2); padding: 11px 15px; border-radius: 14px 14px 4px 14px; }
 .say { color: var(--sub); }
@@ -92,7 +90,7 @@ body {
 .strip figure.pick img { outline: 2px solid var(--mint); outline-offset: 1px; }
 .strip figure.pick::after { content: attr(data-n); position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; border-radius: 50%; background: var(--mint); color: #062; font: 700 10.5px/17px var(--mono); text-align: center; }
 
-.result { background: linear-gradient(180deg, rgba(70,224,181,.07), rgba(70,224,181,0) 70%), var(--card); border: 1px solid rgba(70,224,181,.3); border-radius: 14px; padding: 16px; display: grid; gap: 14px; }
+.result { background: var(--card); border: 1px solid rgba(70,224,181,.3); border-radius: 14px; padding: 16px; display: grid; gap: 14px; }
 .result-h { display: flex; align-items: center; gap: 10px; font-weight: 700; }
 .result-h .pill { margin-left: auto; }
 .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -116,8 +114,8 @@ body {
 .plan .s.now { color: var(--text); font-weight: 600; }
 .plan .s .b { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--line2); display: grid; place-items: center; font-size: 10px; }
 .plan .s.done .b { background: var(--mint); border-color: var(--mint); color: #04261c; }
-.plan .s.now .b { border-color: var(--violet); box-shadow: 0 0 0 3px var(--violet-d); }
-.composer { background: var(--panel); border: 1px solid var(--line2); border-radius: 16px; padding: 12px 12px 10px 16px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+.plan .s.now .b { border-color: var(--violet); }
+.composer { background: var(--panel); border: 1px solid var(--line2); border-radius: 16px; padding: 12px 12px 10px 16px; }
 .composer .ph { color: var(--muted); font-size: 14.5px; padding: 2px 0 14px; }
 .composer .bar { display: flex; align-items: center; gap: 8px; }
 .composer .chip { font-size: 12px; color: var(--sub); padding: 5px 9px; border-radius: 8px; background: var(--card2); display: inline-flex; gap: 6px; align-items: center; }
@@ -134,7 +132,7 @@ body {
 .rbody { padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; flex: 1; }
 .player { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #000; }
 .player img { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; }
-.player .tc { position: absolute; left: 10px; top: 10px; font: 600 11.5px var(--mono); background: rgba(0,0,0,.55); padding: 3px 7px; border-radius: 6px; backdrop-filter: blur(6px); }
+.player .tc { position: absolute; left: 10px; top: 10px; font: 600 11.5px var(--mono); background: rgba(0,0,0,.55); padding: 3px 7px; border-radius: 6px; }
 .player .badge { position: absolute; right: 10px; top: 10px; font: 600 10.5px var(--mono); background: rgba(0,0,0,.55); padding: 3px 7px; border-radius: 6px; color: var(--sub); }
 .ctrl { display: flex; align-items: center; gap: 12px; font: 12px var(--mono); color: var(--sub); }
 .ctrl .play { width: 30px; height: 30px; border-radius: 50%; background: var(--text); color: #000; display: grid; place-items: center; }
@@ -161,15 +159,15 @@ body {
 /* 생성 대기열 */
 .q { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: center; }
 .q img { width: 84px; aspect-ratio: 16/9; object-fit: cover; border-radius: 7px; }
-.q .ph { width: 84px; aspect-ratio: 16/9; border-radius: 7px; background: repeating-linear-gradient(135deg, #1d1f27 0 8px, #191b22 8px 16px); }
+.q .ph { width: 84px; aspect-ratio: 16/9; border-radius: 7px; background: var(--card2); }
 .q .t { font-weight: 600; font-size: 13px; display: flex; gap: 8px; align-items: center; }
 .q .t .r { margin-left: auto; font: 11.5px var(--mono); font-weight: 500; }
 .q .m { font: 11.5px var(--mono); color: var(--muted); margin-top: 2px; }
 .prog { height: 5px; border-radius: 5px; background: var(--line); overflow: hidden; margin-top: 7px; }
-.prog i { display: block; height: 100%; background: linear-gradient(90deg, var(--violet), #c2b8ff); border-radius: 5px; }
+.prog i { display: block; height: 100%; background: var(--mint); border-radius: 5px; }
 
 /* 크레딧 승인 */
-.approve { border: 1px solid rgba(244,185,66,.35); background: linear-gradient(180deg, rgba(244,185,66,.08), transparent 80%), var(--card); border-radius: 14px; padding: 14px 16px; display: grid; gap: 12px; }
+.approve { border: 1px solid rgba(244,185,66,.35); background: var(--amber-d); border-radius: 14px; padding: 14px 16px; display: grid; gap: 12px; }
 .approve .h { display: flex; gap: 10px; align-items: center; font-weight: 700; }
 .approve .h .pill { margin-left: auto; color: var(--amber); border-color: rgba(244,185,66,.35); background: var(--amber-d); }
 .approve .spec { display: grid; grid-template-columns: repeat(4, auto) 1fr; gap: 6px 18px; font-size: 12.5px; }
@@ -196,5 +194,5 @@ body {
 .ab .bar::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%; background: #fff; color: #000; display: grid; place-items: center; font-size: 13px; }
 .ab .lbl { position: absolute; top: 8px; font: 600 10.5px var(--mono); background: rgba(0,0,0,.6); padding: 2px 7px; border-radius: 5px; }
 
-.btn.done { box-shadow: 0 0 0 3px var(--violet-d); }
+
 .btn.dim { opacity: .45; }

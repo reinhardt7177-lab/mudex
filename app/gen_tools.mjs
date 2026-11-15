@@ -1,6 +1,6 @@
-// 생성·대화형 도구: 할 일 목록, 키프레임(OpenAI 이미지), 사용자에게 고르게 하기,
-// 클링 영상 생성(힉스필드, 매번 허락), 8fps 검수 시트.
-// ctx: { emit(event), ask(kind, payload) → Promise<answer>, code, relay, hf }
+// 영상 스킬의 생성·검수 도구: 힉스필드 커넥터(MCP)로 클링 한 컷 만들기(올리기·생성·대기·내려받기 한 번에), 8fps 검수 시트.
+// 범용 도구(mcp_call 등)로도 같은 일을 할 수 있지만, 연수 시연이 흔들리지 않게 한 번에 묶어 둔 것.
+// ctx: { emit(event), ask(kind, payload) → Promise<answer>, hf }
 import fs from "node:fs";
 import path from "node:path";
 import { probe } from "./ffmpeg_tools.mjs";
@@ -47,72 +47,10 @@ async function hfGenerate(hf, params, extra = {}) {
   throw new Error("힉스필드가 프리셋 추천만 돌려줍니다. 프롬프트를 조금 바꿔 다시 해 주세요.");
 }
 
-export const GEN_TOOLS = [
+export const VIDEO_GEN_TOOLS = [
   {
-    name: "set_plan",
-    description: "할 일 목록을 화면 아래에 보여 준다. 작업을 시작할 때 3~6단계로 세우고, 단계가 끝날 때마다 done_count를 올려 다시 부른다.",
-    parameters: {
-      type: "object",
-      properties: { steps: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 8 }, done_count: { type: "integer", minimum: 0 } },
-      required: ["steps", "done_count"],
-      additionalProperties: false,
-    },
-    async run(ws, a, ctx) {
-      ctx.emit({ type: "plan", steps: a.steps, done: a.done_count });
-      return { ok: true };
-    },
-  },
-  {
-    name: "make_keyframes",
-    description: "첫 장면(키프레임) 사진을 그린다. 힉스필드 크레딧을 쓰지 않는다(강사 API). 프롬프트는 영어로 구체적으로(장면, 빛, 렌즈, 구도). 결과는 keyframes/ 아래 png.",
-    parameters: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "파일 이름 앞부분(영문·숫자), 예: mudball" },
-        prompt: { type: "string" },
-        count: { type: "integer", minimum: 1, maximum: 4, description: "기본 4" },
-        quality: { type: "string", enum: ["low", "medium", "high"], description: "기본 medium" },
-      },
-      required: ["name", "prompt"],
-      additionalProperties: false,
-    },
-    async run(ws, a, ctx) {
-      const r = await fetch(`${ctx.relay}/v1/images/generations`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${ctx.code}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "gpt-image-1-mini", prompt: a.prompt, n: a.count ?? 4, size: "1536x1024", quality: a.quality ?? "medium" }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error?.message ?? JSON.stringify(j).slice(0, 300));
-      const files = [];
-      const safe = a.name.replace(/[^\w-]/g, "_");
-      j.data.forEach((d, i) => {
-        const rel = `keyframes/${safe}_${Date.now().toString(36)}_${i + 1}.png`;
-        fs.writeFileSync(ws.outPath(rel), Buffer.from(d.b64_json, "base64"));
-        files.push(rel);
-      });
-      if (j.mudex) ctx.emit({ type: "cost", cost_usd: j.mudex.cost_usd, remaining_usd: j.mudex.remaining_usd });
-      return { files, cost_usd: j.mudex?.cost_usd };
-    },
-  },
-  {
-    name: "ask_pick",
-    description: "사진이나 영상 여러 개를 화면에 보여 주고 사용자가 하나를 고르게 한다. 고른 파일 경로를 돌려준다(사용자가 다른 말을 하면 그 말을 돌려준다).",
-    parameters: {
-      type: "object",
-      properties: { question: { type: "string" }, files: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 8 } },
-      required: ["question", "files"],
-      additionalProperties: false,
-    },
-    async run(ws, a, ctx) {
-      for (const f of a.files) ws.p(f);
-      const ans = await ctx.ask("pick", { question: a.question, files: a.files });
-      return ans;
-    },
-  },
-  {
-    name: "generate_video",
-    description: "힉스필드(클링)로 영상을 생성한다. 연수생 크레딧을 쓰므로 실행 전에 화면에서 비용을 보여 주고 허락을 받는다(거절되면 그대로 멈추고 이유를 묻는다). start_image는 작업 폴더의 사진. 결과는 clips/ 아래 mp4.",
+    name: "higgsfield_clip",
+    description: "힉스필드 커넥터(MCP)로 클링 영상 한 컷을 만든다. 첫 장면 사진 올리기 → 비용 미리보기 → 화면 허락 → 생성 → 기다리기 → clips/에 내려받기를 한 번에 한다(거절되면 멈추고 무엇을 바꿀지 묻는다). start_image는 프로젝트 폴더의 사진.",
     parameters: {
       type: "object",
       properties: {
@@ -120,14 +58,14 @@ export const GEN_TOOLS = [
         prompt: { type: "string", description: "영어로, 움직임과 카메라 중심" },
         start_image: { type: "string" },
         duration: { type: "integer", minimum: 3, maximum: 10, description: "초. 기본 5" },
-        model: { type: "string", enum: Object.keys(VIDEO_MODELS), description: "기본 kling3_0" },
+        model: { type: "string", enum: Object.keys(VIDEO_MODELS), description: "기본 kling2_6" },
       },
       required: ["name", "prompt", "start_image"],
       additionalProperties: false,
     },
     async run(ws, a, ctx) {
-      if (!ctx.hf.loggedIn) throw new Error("힉스필드에 로그인하지 않았습니다. 왼쪽 아래에서 로그인해 달라고 안내하세요.");
-      const model = VIDEO_MODELS[a.model ?? "kling3_0"] ? (a.model ?? "kling3_0") : "kling3_0";
+      if (!ctx.hf.loggedIn) throw new Error("힉스필드 커넥터가 연결되어 있지 않습니다. 왼쪽 아래 '커넥터'에서 힉스필드를 연결해 달라고 안내하세요.");
+      const model = VIDEO_MODELS[a.model ?? "kling2_6"] ? (a.model ?? "kling2_6") : "kling2_6";
       const spec = { duration: a.duration ?? 5 };
       const mediaId = await ctx.hf.upload(ws.p(a.start_image));
       const params = { model, prompt: a.prompt, aspect_ratio: "16:9", medias: [{ role: "start_image", value: mediaId }], ...VIDEO_MODELS[model].params(spec) };
@@ -137,7 +75,7 @@ export const GEN_TOOLS = [
       const { get_cost, ...finalParams } = pre.params;
       const bal = await ctx.hf.balance().catch(() => ({}));
       const ans = await ctx.ask("approve", {
-        title: "영상을 생성할까요?",
+        kind2: "clip", title: "영상을 생성할까요?",
         model: VIDEO_MODELS[model].label, duration: params.duration, quality: params.mode ?? params.resolution ?? "기본",
         credits: cost, balance: bal.credits, prompt: a.prompt, start_image: a.start_image,
       });

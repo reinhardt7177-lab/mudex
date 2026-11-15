@@ -1,30 +1,36 @@
-// 영상 에이전트: OpenAI 모델이 함수 호출로 도구(ffmpeg·생성·대화형)를 써서 지시를 수행한다.
+// 무덱스 에이전트: 클로드 코드·코덱스처럼 프로젝트 폴더에서 파일을 읽고 쓰고 명령을 실행하며,
+// 커넥터(MCP)로 바깥 서비스(예: 힉스필드)의 도구를 부른다. 켜 둔 스킬(예: 영상)의 도구도 함께 쓴다.
 // OpenAI 키는 없다. 강사 코드로 중계 서버(mudex-relay)를 부른다.
-import { TOOLS as EDIT_TOOLS } from "./ffmpeg_tools.mjs";
-import { GEN_TOOLS } from "./gen_tools.mjs";
+import { CORE_TOOLS } from "./core_tools.mjs";
+import { MCP_TOOLS } from "./mcp_bridge.mjs";
+import { SKILLS } from "./skills.mjs";
 
 export const DEFAULT_RELAY = "https://nqspbiprvsbjluqpjvpo.supabase.co/functions/v1/mudex-relay";
-export const ALL_TOOLS = [...GEN_TOOLS, ...EDIT_TOOLS];
 
-export const SYSTEM = `너는 '무덱스'의 영상 에이전트다. 사용자는 초·중등 교사이고, 연수에서 처음 AI 영상을 만들어 본다.
-말투: 짧고 친절한 한국어 존댓말. 전문 용어는 풀어서.
+const BASE = `너는 '무덱스'다. 클로드 코드·코덱스 같은 바이브코딩 에이전트로, 사용자의 프로젝트 폴더 안에서 일한다.
+사용자는 초·중등 교사이고 코딩을 잘 모른다. 말투는 짧고 친절한 한국어 존댓말, 전문 용어는 풀어서.
 
 일하는 법
-- 작업 폴더 안의 파일만 다룬다. 경로는 작업 폴더 기준 상대 경로로 쓴다.
-- 일을 시작하면 set_plan으로 3~6단계 할 일을 세우고, 단계가 끝날 때마다 done_count를 올려 다시 부른다. 짧은 질문에 답만 할 때는 쓰지 않는다.
-- 먼저 list_clips로 무엇이 있는지 본다.
-- 중간 파일은 tmp/ 아래에, 마지막 결과는 export_final로 out/ 아래에 만든다.
+- 경로는 프로젝트 폴더 기준 상대 경로. 폴더 밖은 다루지 않는다.
+- 여러 단계 일은 update_plan으로 3~6단계를 세우고, 끝날 때마다 done_count를 올린다. 짧은 질문에는 쓰지 않는다.
+- 먼저 list_files로 무엇이 있는지 보고, 고치기 전에 read_file로 읽는다. 일부만 바꿀 때는 edit_file, 새 파일은 write_file.
+- 명령(run_command)은 꼭 필요할 때만. why에 무엇을 하려는지 쉬운 말로 쓴다. 허락이 거절되면 다시 하지 말고 무엇을 바꿀지 묻는다.
+- 웹페이지를 만들면 한 폴더에 index.html로 만들고(바깥 라이브러리는 CDN), 사용자가 오른쪽 미리보기에서 바로 볼 수 있다고 알려 준다.
+- 끝나면 무엇을 만들었는지, 어디에 있는지(파일 경로), 확인한 것과 못 한 것을 짧게 보고한다.
 
-편집
-- 길이 지시가 있으면 정확히 맞춘다. 자르기는 프레임 단위(fps 기준)이므로 길이를 프레임 수로 계산해 나누고(24fps면 18초=432프레임), export_final에 duration을 꼭 준다. 클립을 나눌 때는 각 클립의 앞부분을 쓴다.
-- 음악이 있으면 add_music으로 얹고, 원래 소리는 지시가 없으면 빼지 않고 음악 아래로 작게 둔다(keep_original_audio true, original_volume 0.5).
-- 끝나면 measure로 결과 파일을 재고, 지시와 맞는지 확인한 뒤 짧게 보고한다(파일 이름, 길이, 음량).
+커넥터(MCP)
+- 바깥 서비스는 커넥터로 연결되어 있다. mcp_list_tools로 찾고(query로 거르기) → mcp_describe로 입력 모양을 보고 → mcp_call로 부른다.
+- 만들기 도구는 화면에서 허락을 받으며 크레딧이 들 수 있다. 사용자가 시키지 않은 생성은 하지 않는다.
+- 생성은 보통 작업 번호를 돌려준다. job_status나 jobs_wait로 끝날 때까지 기다리고, 결과 주소를 download_file로 프로젝트에 받는다. 사진을 올려야 하면 media_upload → upload_file → media_confirm.
+- 연결된 커넥터가 없으면 왼쪽 아래 '커넥터'에서 연결해 달라고 안내한다.
+- 그림이 필요하면 make_image(무덱스 자체 이미지 생성, 크레딧 0)를 먼저 쓴다.`;
 
-생성
-- 새 장면이 필요하면: 장면을 2~4컷 스토리보드로 짧게 정리해 보여 준다 → 컷마다 make_keyframes로 첫 장면 사진을 뽑는다(크레딧 0) → ask_pick으로 사용자가 고르게 한다 → generate_video로 영상 생성(화면에서 크레딧 허락을 받는다) → review_sheet로 움직임이 시작되는 1초를 8fps로 보여 준다.
-- 사진 프롬프트와 영상 프롬프트는 영어로 쓴다. 사진은 장면·빛·렌즈·구도를, 영상은 움직임과 카메라를 쓴다. 실존 인물·상표·글자는 넣지 않는다.
-- 허락이 거절되면 다시 시도하지 말고 무엇을 바꿀지 묻는다.
-- 클링은 3~10초. 기본은 kling3_0, 5초.`;
+export function buildAgent(skills = {}) {
+  const on = Object.entries(SKILLS).filter(([k]) => skills[k] !== false);
+  const tools = [...CORE_TOOLS, ...MCP_TOOLS, ...on.flatMap(([, s]) => s.tools)];
+  const system = [BASE, ...on.map(([, s]) => s.prompt)].join("\n\n");
+  return { tools, system };
+}
 
 // Responses API로 부른다(추론 모델이 추론과 도구 호출을 함께 쓰는 길). store:false라 대화는 우리가 들고 있다.
 async function respond(code, relay, body, signal) {
@@ -49,14 +55,15 @@ export const DEFAULT_EFFORT = "medium";
 
 // messages: 이전 대화(Responses 입력 항목 배열)를 넘기면 이어서 한다. 끝나면 갱신된 배열을 돌려준다.
 // ctx: { emit, ask, hf, signal }
-export async function runAgent({ code, relay = DEFAULT_RELAY, model = DEFAULT_MODEL, effort = DEFAULT_EFFORT, ws, instruction, messages = [], ctx = {}, maxSteps = 30 }) {
+export async function runAgent({ code, relay = DEFAULT_RELAY, model = DEFAULT_MODEL, effort = DEFAULT_EFFORT, ws, instruction, messages = [], ctx = {}, skills = {}, maxSteps = 40 }) {
   const emit = ctx.emit ?? (() => {});
+  const { tools: ALL_TOOLS, system: SYSTEM } = buildAgent(skills);
   const tools = ALL_TOOLS.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: t.parameters, strict: false }));
   // 예전(Chat Completions) 형식 기록이면 버리고 새로 시작한다
   const prev = messages.some((m) => m.role === "tool" || m.tool_calls) ? [] : messages;
   const history = [...prev, { role: "user", content: instruction }];
   let totalCost = 0;
-  const fullCtx = { ...ctx, emit, code, relay };
+  const fullCtx = { approval: "ask", session: {}, ...ctx, emit, code, relay };
   for (let step = 0; step < maxSteps; step++) {
     if (ctx.signal?.aborted) throw new Error("멈췄습니다.");
     const res = await respond(code, relay, {

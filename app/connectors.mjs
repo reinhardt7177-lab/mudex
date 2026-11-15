@@ -110,8 +110,26 @@ export class Connectors {
     }
     const cl = this.client(c);
     if (!cl.loggedIn) throw new Error("먼저 연결해 주세요.");
-    if (!this.toolCache.has(id)) this.toolCache.set(id, (await cl.listTools()).map((t) => ({ name: t.name, description: (t.description ?? "").slice(0, 600), inputSchema: t.inputSchema })));
+    if (!this.toolCache.has(id)) this.toolCache.set(id, (await cl.listTools()).map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema })));
     return this.toolCache.get(id);
+  }
+
+  // 에이전트가 쓰는 쪽: 연결된 커넥터 찾기와 아무 도구나 부르기(허락은 mcp_bridge가 받는다)
+  connected() { return this.list.filter((c) => this.status(c).connected); }
+  find(ref) {
+    const r = String(ref ?? "").toLowerCase();
+    const live = this.connected();
+    const c = live.find((x) => x.id === ref || x.name.toLowerCase() === r) ?? (live.length === 1 && !ref ? live[0] : null);
+    if (!c) throw new Error(`연결된 커넥터 '${ref}'가 없습니다. 연결된 것: ${live.map((x) => x.name).join(", ") || "없음"}`);
+    return c;
+  }
+  async callAny(id, name, args = {}) {
+    const c = this.get(id);
+    if (c.practice) {
+      if (SAFE_TOOLS.includes(name)) return practiceAnswer(name, args);
+      return { practice: true, note: "연습 모드 커넥터라 실제로 실행하지 않았습니다. 진짜 커넥터를 연결하면 이 자리에서 실행됩니다.", tool: name };
+    }
+    return this.client(c).call(name, args);
   }
 
   async call(id, name, args = {}) {
