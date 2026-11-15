@@ -4,20 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>무덱스</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect width='30' height='30' rx='8' fill='%2346e0b5'/%3E%3Cpath d='M9.5 21.5V9l6 6.5 6-6.5v12.5' stroke='%2304261c' stroke-width='2.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect width='30' height='30' rx='8' fill='%23146b7c'/%3E%3Cpath d='M9.5 21.5V9l6 6.5 6-6.5v12.5' stroke='%23ffffff' stroke-width='2.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="mudex.css">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <div class="app">
   <aside class="side">
     <div class="brand">
-      <svg width="30" height="30" viewBox="0 0 30 30"><rect width="30" height="30" rx="8" fill="#46e0b5"/><rect x="3.5" y="5" width="2" height="3" rx=".6" fill="#04261c" opacity=".55"/><rect x="3.5" y="13.5" width="2" height="3" rx=".6" fill="#04261c" opacity=".55"/><rect x="3.5" y="22" width="2" height="3" rx=".6" fill="#04261c" opacity=".55"/><path d="M9.5 21.5V9l6 6.5 6-6.5v12.5" stroke="#04261c" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <div><b>무덱스</b><small>MUDEX · 영상 에이전트</small></div>
+      <svg width="30" height="30" viewBox="0 0 30 30"><rect width="30" height="30" rx="8" fill="#146b7c"/><rect x="3.5" y="5" width="2" height="3" rx=".6" fill="#ffffff" opacity=".55"/><rect x="3.5" y="13.5" width="2" height="3" rx=".6" fill="#ffffff" opacity=".55"/><rect x="3.5" y="22" width="2" height="3" rx=".6" fill="#ffffff" opacity=".55"/><path d="M9.5 21.5V9l6 6.5 6-6.5v12.5" stroke="#ffffff" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><b>무덱스</b><small>MUDEX · 나만의 코딩 에이전트</small></div>
     </div>
-    <button class="newbtn" id="newJob">＋ 새 작업 <kbd>Ctrl N</kbd></button>
+    <button class="newbtn" id="newJob">＋ 새 프로젝트 <kbd>Ctrl N</kbd></button>
     <div class="jobs" id="jobs"></div>
-    <button class="cxbtn" id="openCx">🔌 커넥터 (MCP)</button>
+    <button class="cxbtn" id="openCx"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3v5M15 3v5"/><path d="M7 8h10v3a5 5 0 0 1-10 0z"/><path d="M12 16v5"/></svg> 커넥터 (MCP)</button>
     <div class="conn" id="conn"></div>
   </aside>
 
@@ -27,10 +28,12 @@
     <div class="dock" id="dock">
       <div class="plan" id="plan"></div>
       <div class="composer" id="composer">
-        <textarea id="input" rows="1" placeholder="무엇을 만들거나 고칠까요?  예) 클립 3개 이어 붙이고 18초로, 음악 얹어서 내보내 줘"></textarea>
+        <textarea id="input" rows="1" placeholder="무엇을 만들까요?  예) 우리 반 퀴즈 웹페이지 만들어 줘 · 힉스필드로 5초 장면 만들어 줘"></textarea>
         <div class="bar">
           <button class="chip" id="addFile">＋ 파일</button>
-          <label class="chip">◎ <select id="model"><option value="gpt-6.1-terra|medium">GPT-6.1 Terra · 보통</option><option value="gpt-6.1-terra|high">GPT-6.1 Terra · 깊게</option><option value="gpt-6.1-terra|low">GPT-6.1 Terra · 빠르게</option><option value="gpt-5-mini|medium">gpt-5-mini · 아껴 쓰기</option></select></label>
+          <label class="chip" title="에이전트 모델과 생각하는 깊이"><select id="model" aria-label="모델"><option value="gpt-6.1-terra|medium">GPT-6.1 Terra · 보통</option><option value="gpt-6.1-terra|high">GPT-6.1 Terra · 깊게</option><option value="gpt-6.1-terra|low">GPT-6.1 Terra · 빠르게</option><option value="gpt-5-mini|medium">gpt-5-mini · 아껴 쓰기</option></select></label>
+          <label class="chip" title="명령 실행·바깥 서비스 실행 전에 물어볼지"><select id="approval" aria-label="승인 모드"><option value="ask">물어보고 하기</option><option value="auto">자동 실행</option></select></label>
+          <button class="chip" id="skillChip">영상 스킬</button>
           <button class="send" id="send" title="보내기 (Enter)">↑</button>
         </div>
       </div>
@@ -41,9 +44,9 @@
   <section class="right">
     <div class="tabs" id="tabs">
       <span class="tab on" data-tab="preview">미리보기</span>
-      <span class="tab" data-tab="gen">생성</span>
-      <span class="tab" data-tab="review">검수</span>
       <span class="tab" data-tab="files">파일</span>
+      <span class="tab" data-tab="term">터미널</span>
+      <span class="tab" data-tab="review">검수</span>
     </div>
     <div class="rbody" id="rbody"></div>
   </section>

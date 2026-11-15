@@ -1,0 +1,42 @@
+/* 테마 값. html[data-theme="a"] 밝음(프레임 시트), html[data-theme="b"] 어두움(데이터 터미널, 기본). */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600;700&display=swap");
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+
+html[data-theme="a"] {
+  color-scheme: light;
+  --font: "IBM Plex Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", "IBM Plex Sans KR", monospace;
+  --frame: #f1f5f5; --bg: #ffffff; --side: #f1f5f5; --panel: #ffffff; --card: #ffffff; --card2: #f3f6f6; --active: #e4ebeb;
+  --line: #e3e8e8; --rule: #eef1f1; --line2: #cdd3d3; --text: #121616; --sub: #343a3a; --muted: #5b6262;
+  --mint: #146b7c; --mint-d: #e3f0f2; --violet: #146b7c; --violet-d: #e3f0f2;
+  --amber: #92400e; --amber-d: #fffbeb; --amber-line: #f3dc9a; --red: #b42328; --red-d: #fdecea;
+  --primary: #121616; --primary-hover: #2a3030; --on-primary: #ffffff; --on-accent: #ffffff;
+  --code-ink: #22292a; --hover: #e9efef; --warn-dot: #c27c0e; --err-ink: #7a1a1d; --err-line: #f3c5c2;
+  --approve-inner: #f1e6c4; --approve-line: #e9c46a; --approve-note: #6b5a2e; --box-line: #b7c1c1;
+  --selection: #cfe6ea; --scroll: #cfd6d6; --led-off: #b9c1c1; --meter: #dfe6e6; --pill-mint-line: #bcd9de; --spin-track: #d5dede;
+  --composer-shadow: 0 1px 2px rgba(18,22,22,.04); --scrim: rgba(18,22,22,.32); --scrim-strong: rgba(18,22,22,.86); --float-shadow: 0 16px 48px rgba(18,22,22,.18);
+  --job-on-bg: var(--active); --job-on-line: none; --tab-line: 2px; --tab-line-color: var(--mint);
+  --seg-on: none; --seg-on-bg: var(--bg);
+  --r-card: 8px; --r-ctl: 6px; --r-sheet: 14px;
+}
+
+/* B: 긴 시간 쓰는 작업실. 카드는 바탕보다 어둡고, 선택은 1px 청록 줄 하나, 숫자는 흰색·회색. */
+html[data-theme="b"] {
+  color-scheme: dark;
+  --font: "Public Sans", "Pretendard Variable", "Pretendard", "Malgun Gothic", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", "Pretendard Variable", monospace;
+  --frame: #0d0d0f; --bg: #161618; --side: #0d0d0f; --panel: #161618; --card: #111113; --card2: #1d1d20; --active: #1f1f23;
+  --line: #24242a; --rule: #1d1d21; --line2: #3a3a40; --text: #f4f4f5; --sub: #c9cacf; --muted: #9a9ca4;
+  --mint: #2ab3c6; --mint-d: #12262a; --violet: #2ab3c6; --violet-d: #12262a;
+  --amber: #e3b45a; --amber-d: #221d12; --amber-line: #4f4120; --red: #ef6b7f; --red-d: #2a171c;
+  --primary: #f4f4f5; --primary-hover: #ffffff; --on-primary: #111113; --on-accent: #06262b;
+  --code-ink: #d6d9dd; --hover: #18181b; --warn-dot: #e3b45a; --err-ink: #f4a9b4; --err-line: #5a2a33;
+  --approve-inner: #2a2618; --approve-line: #6a5626; --approve-note: #cdb47c; --box-line: #4a4b52;
+  --selection: rgba(42,179,198,.30); --scroll: #2c2c31; --led-off: #55575e; --meter: #26262b; --pill-mint-line: #1f4a52; --spin-track: #2c2c31;
+  --composer-shadow: 0 12px 28px rgba(0,0,0,.35); --scrim: rgba(0,0,0,.55); --scrim-strong: rgba(0,0,0,.9); --float-shadow: 0 12px 32px rgba(0,0,0,.4);
+  --job-on-bg: transparent; --job-on-line: inset 1px 0 0 var(--mint); --tab-line: 1px; --tab-line-color: var(--mint);
+  --seg-on: inset 0 -1px 0 var(--mint); --seg-on-bg: transparent;
+  --r-card: 6px; --r-ctl: 6px; --r-sheet: 12px;
+}
+html[data-theme="b"] .job.on { border-radius: 0 var(--r-ctl) var(--r-ctl) 0; }
+html[data-theme="b"] .pvframe { background: #fff; }

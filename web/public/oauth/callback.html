@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>무덱스 연결</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #131217; color: #fff; font: 15px/1.6 "Pretendard", "Malgun Gothic", system-ui, sans-serif; }
+  .b { text-align: center; padding: 24px; }
+  .m { width: 44px; height: 44px; border-radius: 10px; background: #2ab3c6; margin: 0 auto 16px; }
+  p { color: #a3a5ab; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<div class="b"><div class="m"></div><b id="t">연결하는 중</b><p id="d">잠시만 기다려 주세요.</p></div>
+<script>
+  // 로그인 서버가 돌려준 코드를 무덱스 창에 넘기고 닫는다. 코드는 이 창에 남기지 않는다.
+  const q = new URLSearchParams(location.search);
+  if (q.get("pending")) { document.getElementById("t").textContent = "로그인 화면을 여는 중"; throw 0; }
+  const msg = { type: "mudex-oauth", code: q.get("code"), state: q.get("state"), error: q.get("error"), error_description: q.get("error_description") };
+  history.replaceState(null, "", location.pathname);
+  if (window.opener) {
+    window.opener.postMessage(msg, location.origin);
+    document.getElementById("t").textContent = msg.code ? "연결 완료" : "연결하지 못했습니다";
+    document.getElementById("d").textContent = msg.code ? "이 창은 곧 닫힙니다." : (msg.error_description || msg.error || "무덱스로 돌아가 다시 시도해 주세요.");
+    if (msg.code) setTimeout(() => window.close(), 600);
+  } else {
+    document.getElementById("t").textContent = "무덱스 창을 찾지 못했습니다";
+    document.getElementById("d").textContent = "무덱스에서 '연결'을 다시 눌러 주세요.";
+  }
+</script>
+</body>
+</html>
