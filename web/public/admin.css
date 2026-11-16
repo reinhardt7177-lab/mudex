@@ -71,11 +71,17 @@ label { display: grid; gap: 6px; font-size: 12px; font-weight: 500; color: var(-
 .url { font-family: var(--mono); color: var(--sub); font-size: 15px; }
 .acts { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
 .acts .btn { height: 38px; }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); }
 .stats > div { padding: 16px 20px; }
 .stats > div + div { border-left: 1px solid var(--line); }
 .v { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
 .v small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.money { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; }
+.money > span, .money > small { white-space: nowrap; }
+.money > small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 0; }
+.stats .money, .num .money { display: inline-flex; flex-direction: column; }
+.num .money { align-items: flex-end; }
+.fx-note { margin-top: -12px; }
 .bar { height: 4px; border-radius: 2px; background: var(--meter); margin-top: 10px; overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--mint); }
 .sec { font-size: 15px; font-weight: 600; display: flex; gap: 10px; align-items: baseline; margin-bottom: -12px; }

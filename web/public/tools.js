@@ -180,10 +180,13 @@ export const CORE_TOOLS = [
   },
   {
     name: "make_image",
-    description: "그림을 그린다(무덱스 자체 이미지 생성, 강사 API 사용, 힉스필드 크레딧 0). 영어 프롬프트로 장면·빛·구도를 구체적으로. 결과는 path_prefix_1.png … 로 저장.",
-    parameters: { type: "object", properties: { prompt: { type: "string" }, path_prefix: { type: "string", description: "예: images/mudball" }, count: { type: "integer", minimum: 1, maximum: 4 }, size: { type: "string", enum: ["1536x1024", "1024x1024", "1024x1536"] }, quality: { type: "string", enum: ["low", "medium", "high"] } }, required: ["prompt", "path_prefix"], additionalProperties: false },
+    description: "Sunburst로 그림을 그린다(강사 API 사용, 힉스필드 크레딧 0). 기본은 높은 품질(high), 1536x1024이다. 사용자가 요청한 경우에만 품질을 낮춘다. 영어 프롬프트로 장면·빛·구도를 구체적으로. 결과는 path_prefix_1.png … 로 저장.",
+    parameters: { type: "object", properties: { prompt: { type: "string" }, path_prefix: { type: "string", description: "예: images/mudball" }, count: { type: "integer", minimum: 1, maximum: 4 }, size: { type: "string", enum: ["1536x1024", "1024x1024", "1024x1536"] }, quality: { type: "string", enum: ["low", "medium", "high"], description: "기본 high. 사용자가 요청한 경우에만 medium 또는 low를 사용한다." } }, required: ["prompt", "path_prefix"], additionalProperties: false },
     async run(a, ctx) {
-      const j = await relayPost(ctx.relay, "/v1/images/generations", ctx.code, { model: "gpt-image-1-mini", prompt: a.prompt, n: a.count ?? 1, size: a.size ?? "1536x1024", quality: a.quality ?? "medium" }, ctx.signal);
+      const model = "gpt-image-2.6-sunburst";
+      const quality = a.quality ?? "high";
+      const imageSize = a.size ?? "1536x1024";
+      const j = await relayPost(ctx.relay, "/v1/images/generations", ctx.code, { model, prompt: a.prompt, n: a.count ?? 1, size: imageSize, quality }, ctx.signal);
       const files = [];
       for (const [i, d] of j.data.entries()) {
         const rel = `${a.path_prefix.replace(/\.png$/i, "")}_${i + 1}.png`;
@@ -191,7 +194,7 @@ export const CORE_TOOLS = [
         files.push(rel); ctx.emit({ type: "file_changed", path: rel });
       }
       if (j.mudex) ctx.emit({ type: "cost", cost_usd: j.mudex.cost_usd, remaining_usd: j.mudex.remaining_usd });
-      return { files, cost_usd: j.mudex?.cost_usd };
+      return { files, model, quality, size: imageSize, cost_usd: j.mudex?.cost_usd };
     },
   },
   {

@@ -4,6 +4,7 @@ await ready;
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtS = (s) => (s == null ? "" : `${Number(s).toFixed(s % 1 ? 3 : 0)}s`);
+const USD_KRW_RATE = 1335; // 표시용 참고 환율, 2026-11-16 기준
 const enc = (rel) => rel.split("/").map(encodeURIComponent).join("/");
 const fileUrl = (rel) => `/f/${encodeURIComponent(S.jobId)}/${enc(rel)}`;
 const thumbUrl = (rel) => `/thumb/${encodeURIComponent(S.jobId)}/${enc(rel)}`;
@@ -246,7 +247,7 @@ function toolSummary(name, a = {}) {
     case "check_page": return a.path;
     case "download_file": return `→ ${a.path}`;
     case "upload_file": return a.path;
-    case "make_image": return `gpt-image · ${a.count ?? 1}장 · 크레딧 0`;
+    case "make_image": return `이미지 생성 · ${a.count ?? 1}장 · 크레딧 0`;
     case "web_search": return `"${a.query ?? ""}"`;
     case "mcp_list_tools": return `${a.connector ?? "전체"}${a.query ? ` · "${a.query}"` : ""}`;
     case "mcp_describe": case "mcp_call": return `${a.connector ?? ""} · ${a.tool}`;
@@ -410,17 +411,16 @@ function renderToolResult(e) {
     if (r.approved === false) $(".st", card).innerHTML = `<span style="color:var(--muted)">취소함</span>`;
     else card.insertAdjacentHTML("beforeend", `<div class="tool-b"><pre class="termblk">${esc(JSON.stringify(r, null, 2).slice(0, 1200))}</pre></div>`);
   }
-  if (e.name === "make_image" && r.files) {
-    card.insertAdjacentHTML("beforeend", `<div class="tool-b"><div class="strip" style="grid-template-columns:repeat(${Math.min(4, r.files.length)},1fr)">${r.files.map((f, i) => `<figure><img src="${fileUrl(f)}" alt="" data-zoom="${fileUrl(f)}"><figcaption>${i + 1}</figcaption></figure>`).join("")}</div></div>`);
-    $(".st", card).innerHTML = `<span class="ok">${icon("check", 12)}</span> ${r.files.length}장 · $${(r.cost_usd ?? 0).toFixed(3)}`;
-  }
-  if (e.name === "make_keyframes" && r.files) {
-    card.insertAdjacentHTML("beforeend", `<div class="tool-b"><div class="strip" style="grid-template-columns:repeat(${Math.min(4, r.files.length)},1fr)">${r.files.map((f, i) => `<figure><img src="${fileUrl(f)}" alt="" data-zoom="${fileUrl(f)}"><figcaption>${i + 1}</figcaption></figure>`).join("")}</div></div>`);
-    $(".st", card).innerHTML = `<span class="ok">${icon("check", 12)}</span> ${r.files.length}장 · $${(r.cost_usd ?? 0).toFixed(3)}`;
+  if ((e.name === "make_image" || e.name === "make_keyframes") && r.files?.length) {
+    if (r.model) $(".fn", card).textContent = `${r.model} · ${r.quality} · ${r.size}`;
+    card.insertAdjacentHTML("beforeend", `<div class="tool-b"><div class="strip downloadable-images">${r.files.map((f, i) => `<div><figure><img src="${fileUrl(f)}" alt="" data-zoom="${fileUrl(f)}"><figcaption>${i + 1}</figcaption></figure><button type="button" class="btn video-download" data-download-image="${esc(f)}" data-download-job="${esc(S.jobId)}" aria-label="${i + 1}번 이미지 다운로드">${icon("down", 14)} 이미지 다운로드</button></div>`).join("")}</div></div>`);
+    const cost = r.cost_usd ?? 0;
+    $(".st", card).innerHTML = `<span class="ok">${icon("check", 12)}</span> ${r.files.length}장 · 약 ${Math.round(cost * USD_KRW_RATE).toLocaleString("ko-KR")}원 ($${cost.toFixed(3)})`;
+    $(".st", card).title = `원화는 1달러=${USD_KRW_RATE.toLocaleString("ko-KR")}원(2026-11-16 기준)으로 환산한 참고 금액입니다. 실제 청구는 달러 기준이며 세금·결제 수수료는 별도입니다.`;
   }
   if (e.name === "higgsfield_clip" || e.name === "generate_video") {
     if (r.approved === false) $(".st", card).innerHTML = `<span style="color:var(--muted)">취소함</span>`;
-    else if (r.file) { $(".st", card).innerHTML = `<span class="ok">${icon("check", 12)}</span> ${fmtS(r.duration)} · ${r.credits_used ?? "?"}크레딧`; card.insertAdjacentHTML("beforeend", `<div class="tool-b"><video src="${fileUrl(r.file)}" controls muted style="width:100%;border-radius:8px"></video></div>`); }
+    else if (r.file) { $(".st", card).innerHTML = `<span class="ok">${icon("check", 12)}</span> ${fmtS(r.duration)} · ${r.credits_used ?? "?"}크레딧`; card.insertAdjacentHTML("beforeend", `<div class="tool-b"><video src="${fileUrl(r.file)}" controls playsinline muted style="width:100%;border-radius:8px"></video><button type="button" class="btn video-download" data-download-video="${esc(r.file)}" data-download-job="${esc(S.jobId)}">${icon("down", 14)} 영상 다운로드</button></div>`); }
   }
   if (e.name === "ask_pick") $(".st", card).innerHTML = `<span class="ok">${icon("check", 12)}</span> 골랐음`;
 }
@@ -558,7 +558,7 @@ function renderDone(e) {
         <div class="kpi"><div class="k">음량</div><div class="v">${L ? L.integrated_lufs : "—"}<small> LUFS</small></div><div class="t" style="${L && Math.abs(L.integrated_lufs + 14) > 1 ? "color:var(--amber)" : ""}">유튜브 기준 −14 ${L && Math.abs(L.integrated_lufs + 14) <= 1 ? icon("check", 12) : ""}</div></div>
         <div class="kpi"><div class="k">트루피크</div><div class="v">${L ? L.true_peak_db : "—"}<small> dBTP</small></div><div class="t" style="${L && L.true_peak_db > -1 ? "color:var(--amber)" : ""}">−1 이하 ${L && L.true_peak_db <= -1 ? icon("check", 12) : ""}</div></div>
       </div>
-      <div class="file">${esc(v.file)}${v.size ? ` · ${(v.size / 1048576).toFixed(1)}MB` : ""} <button class="btn" data-play="${esc(v.file)}">▶ 재생</button><button class="btn ghost" data-open>폴더 열기</button></div></div>`);
+      <div class="file">${esc(v.file)}${v.size ? ` · ${(v.size / 1048576).toFixed(1)}MB` : ""} <button class="btn" data-play="${esc(v.file)}">▶ 재생</button><button class="btn" data-download-video="${esc(v.file)}" data-download-job="${esc(S.jobId)}">영상 다운로드</button><button class="btn ghost" data-open>폴더 열기</button></div></div>`);
     void okLen;
   } else if (e.cost_usd) {
     addEl(`<div class="muted">이번 지시 $${e.cost_usd.toFixed(4)} · ${e.seconds}초</div>`);
@@ -602,7 +602,7 @@ function renderRight() {
     const url = fileUrl(target.file) + `?t=${Date.now()}`;
     const bar = `<div class="pvbar"><span class="mono">${esc(target.file)}</span><span class="sp"></span>${target.kind === "html" ? `<button class="btn ghost" id="pvReload">↻ 새로 고침</button><a class="btn ghost" href="${fileUrl(target.file)}" target="_blank">↗ 새 창</a>` : ""}</div>`;
     if (target.kind === "html") rb.innerHTML = `${bar}<iframe class="pvframe" src="${url}" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads"></iframe>`;
-    else if (target.kind === "image") rb.innerHTML = `${bar}<img class="pvimg" src="${url}" data-zoom="${url}" alt="">`;
+    else if (target.kind === "image") rb.innerHTML = `${bar}<button type="button" class="btn" data-download-image="${esc(target.file)}" data-download-job="${esc(S.jobId)}">${icon("down", 14)} 이미지 다운로드</button><img class="pvimg" src="${url}" data-zoom="${url}" alt="">`;
     else if (target.kind === "audio") rb.innerHTML = `${bar}<audio src="${url}" controls style="width:100%"></audio>`;
     else { rb.innerHTML = `${bar}<pre class="pvcode">불러오는 중…</pre>`; fetch(url).then((r) => r.text()).then((t) => { const p = $(".pvcode"); if (p) p.textContent = t.slice(0, 60000); }); }
     $("#pvReload")?.addEventListener("click", () => renderRight());
@@ -619,7 +619,7 @@ function renderRight() {
     const v = S.verify && S.verify.file === out ? S.verify : null;
     rb.innerHTML = `
       <div class="player">${out ? `<video id="pv" src="${fileUrl(out)}" preload="metadata"></video><span class="tc" id="tc">00:00.00</span><span class="badge">${out.startsWith("out/") ? "결과" : "원본"} · ${esc(out.split("/").pop())}</span>` : `<div class="empty-p">아직 볼 파일이 없어요</div>`}</div>
-      ${out ? `<div class="ctrl"><button class="play" id="pp" aria-label="재생">${icon("play", 14)}</button><span id="tt">0.00 / 0.00</span><span class="sp"></span><button id="full">⤢ 크게</button></div>` : ""}
+      ${out ? `<div class="ctrl"><button class="play" id="pp" aria-label="재생">${icon("play", 14)}</button><span id="tt">0.00 / 0.00</span><span class="sp"></span><button type="button" data-download-video="${esc(out)}" data-download-job="${esc(S.jobId)}">영상 다운로드</button><button id="full">⤢ 크게</button></div>` : ""}
       ${segs.length ? `<div class="tl"><div class="ruler">${[0, .2, .4, .6, .8, 1].map((k) => `<span>${(total * k).toFixed(0)}</span>`).join("")}</div>
         <div class="lane"><span class="lb">V1</span><div class="trk">${segs.map((s) => `<div class="clip" style="flex:${s.d};background-image:url('${thumbUrl(s.f)}')"><span>${esc(s.f.split("/").pop().replace(/\.\w+$/, "").slice(0, 10))}</span></div>`).join("")}</div></div>
         ${music ? `<div class="lane"><span class="lb">A1</span><div class="trk"><div class="aud"><svg id="wave" viewBox="0 0 400 40" preserveAspectRatio="none"></svg></div></div></div>` : ""}
@@ -684,6 +684,38 @@ function drawWave() {
     d += `M${i * 2} ${20 - h}V${20 + h}`;
   }
   w.innerHTML = `<path d="${d}" stroke="#9b8cff" stroke-width="1.2" opacity=".85"/>`;
+}
+
+async function prepareFileDownload(button) {
+  const { downloadJob, downloadVideo, downloadImage } = button.dataset;
+  const label = downloadImage ? "이미지" : "영상";
+  button.disabled = true;
+  try {
+    const file = await fileBlob(downloadJob, downloadImage ?? downloadVideo);
+    const url = URL.createObjectURL(file);
+    const dialog = document.createElement("dialog");
+    dialog.className = "video-save";
+    dialog.setAttribute("aria-label", `${label} 다운로드`);
+    dialog.innerHTML = `<h2>${label} 다운로드</h2><p class="download-name"></p><p>아래 버튼을 눌러 기기에 저장하세요.</p><div class="acts"><a class="btn pri">${label} 파일 저장</a><button type="button" class="btn ghost">닫기</button></div>`;
+    $(".download-name", dialog).textContent = file.name;
+    const link = $("a", dialog);
+    link.href = url;
+    link.download = file.name;
+    $("button", dialog).onclick = () => dialog.close();
+    dialog.onclose = () => {
+      dialog.remove();
+      button.focus();
+      // 모바일 다운로드 관리자가 원본을 읽을 시간을 준다.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    };
+    document.body.append(dialog);
+    dialog.showModal();
+    link.focus();
+  } catch (error) {
+    toast(error.code === "NEED_PERMISSION" ? error.message : `${label} 원본을 읽지 못했어요. 프로젝트의 파일 목록을 확인해 주세요.`, 5000);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function lightbox(img, video) {
@@ -1065,6 +1097,8 @@ $("#maxBtn").onclick = () => setMax(!document.body.classList.contains("pvmax"));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && document.body.classList.contains("pvmax") && !document.querySelector(".modal, #entry")) setMax(false); });
 document.addEventListener("keydown", (e) => { if (e.ctrlKey && e.key.toLowerCase() === "n") { e.preventDefault(); newJob(); } });
 document.addEventListener("click", (e) => {
+  const download = e.target.closest("[data-download-video], [data-download-image]");
+  if (download) { e.preventDefault(); prepareFileDownload(download); return; }
   const z = e.target.closest("[data-zoom]"); if (z) return lightbox(z.dataset.zoom);
   const pc = e.target.closest("[data-preview]"); if (pc) { S.previewFile = pc.dataset.preview; setTab("preview"); return; }
   const p = e.target.closest("[data-play]"); if (p) { e.preventDefault(); setTab("preview"); setTimeout(() => $("#pv")?.play(), 100); return; }

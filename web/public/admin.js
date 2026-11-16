@@ -4,7 +4,11 @@ const RELAY = "https://nqspbiprvsbjluqpjvpo.supabase.co/functions/v1/mudex-relay
 const SITE = location.origin;
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const won = (usd) => `$${Number(usd ?? 0).toFixed(2)}`;
+const USD_KRW_RATE = 1335; // 이미지 비용과 같은 표시용 참고 환율, 2026-11-16 기준
+const money = (usd) => {
+  const amount = Number(usd ?? 0);
+  return `<span class="money"><span>$${amount.toFixed(2)}</span><small>약 ${Math.round(amount * USD_KRW_RATE).toLocaleString("ko-KR")}원</small></span>`;
+};
 const hm = (d) => new Date(d).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 const md = (d) => new Date(d).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric", weekday: "short" });
 const ago = (d) => { if (!d) return "—"; const s = (Date.now() - new Date(d)) / 1000; return s < 60 ? "방금" : s < 3600 ? `${Math.floor(s / 60)}분 전` : s < 86400 ? `${Math.floor(s / 3600)}시간 전` : md(d); };
@@ -83,7 +87,7 @@ async function loadList() {
   if (!selected && rows.find((c) => c.open)) selected = rows.find((c) => c.open).id;
   $("#list").innerHTML = rows.length ? rows.map((c) => `<button class="row ${c.id === selected ? "on" : ""}" data-id="${c.id}">
       <span class="rn">${esc(c.name)}</span><span class="pill ${c.open ? "live" : ""}">${c.open ? "진행 중" : "끝남"}</span>
-      <span class="rm"><span class="code">${esc(c.entry_code)}</span> · ${c.trainees}명 · ${won(c.spent)}${c.budget_usd != null ? ` / ${won(c.budget_usd)}` : ""} · ${md(c.ends_at)} ${hm(c.ends_at)}까지</span></button>`).join("")
+      <span class="rm"><span class="code">${esc(c.entry_code)}</span> · ${c.trainees}명 · ${money(c.spent)}${c.budget_usd != null ? ` / ${money(c.budget_usd)}` : ""} · ${md(c.ends_at)} ${hm(c.ends_at)}까지</span></button>`).join("")
     : `<div class="muted">아직 만든 연수가 없어요.</div>`;
   document.querySelectorAll(".row").forEach((b) => (b.onclick = () => { selected = b.dataset.id; loadList(); loadDetail(); }));
 }
@@ -93,6 +97,7 @@ async function loadDetail(quiet) {
   try { j = await T("GET", `/teacher/cohorts/${selected}`); } catch (e) { if (!quiet) $("#detail").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
   const c = j.cohort, t = j.trainees;
   const spent = t.reduce((s, x) => s + x.spent, 0);
+  const remaining = c.budget_usd == null ? null : Math.max(0, c.budget_usd - spent);
   const pct = c.budget_usd ? Math.min(100, (spent / c.budget_usd) * 100) : 0;
   $("#detail").innerHTML = `
     <div class="dh"><div><h2>${esc(c.name)}</h2><p class="muted">${c.open ? `${md(c.ends_at)} ${hm(c.ends_at)}에 저절로 끝납니다` : "끝난 연수입니다. 코드는 모두 폐기되었습니다."}</p></div>
@@ -103,12 +108,14 @@ async function loadDetail(quiet) {
         <div class="acts"><button class="btn pri" id="present">프로젝터로 띄우기</button><button class="btn" id="copy">입장 주소 복사</button></div></div></div>` : ""}
     <div class="stats">
       <div><div class="k">들어온 연수생</div><div class="v">${t.length}<small>명</small></div></div>
-      <div><div class="k">쓴 돈</div><div class="v">${won(spent)}</div></div>
-      <div><div class="k">연수 전체 안전선</div><div class="v">${c.budget_usd != null ? won(c.budget_usd) : "없음"}</div>${c.budget_usd != null ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ""}</div>
+      <div><div class="k">쓴 돈</div><div class="v">${money(spent)}</div></div>
+      <div><div class="k">남은 한도</div><div class="v">${remaining == null ? "제한 없음" : money(remaining)}</div></div>
+      <div><div class="k">연수 전체 안전선</div><div class="v">${c.budget_usd != null ? money(c.budget_usd) : "없음"}</div>${c.budget_usd != null ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ""}</div>
     </div>
+    <p class="hint fx-note">원화는 1달러=${USD_KRW_RATE.toLocaleString("ko-KR")}원(2026-11-16 기준)으로 환산한 참고 금액입니다. 실제 청구는 달러 기준이며 세금·결제 수수료는 별도입니다.</p>
     <div class="sec">연수생 <span class="muted">10초마다 새로 고침</span></div>
     <div class="table">${t.length ? `<div class="tr th"><span>이름</span><span>들어온 시각</span><span class="num">쓴 돈</span><span>마지막 사용</span><span></span></div>` + t.map((x) => `<div class="tr ${x.disabled ? "off" : ""}">
-        <span class="nm">${esc(x.name)}</span><span>${hm(x.joined_at)}</span><span class="num">${won(x.spent)}</span><span>${ago(x.last_used_at)}</span>
+        <span class="nm">${esc(x.name)}</span><span>${hm(x.joined_at)}</span><span class="num">${money(x.spent)}</span><span>${ago(x.last_used_at)}</span>
         <span class="ra">${x.disabled ? `<span class="muted">꺼짐</span>` : c.open ? `<button class="btn ghost sm" data-off="${esc(x.code)}" data-n="${esc(x.name)}">끄기</button>` : ""}</span></div>`).join("")
       : `<div class="tr empty"><span class="muted">아직 들어온 연수생이 없어요. 연수 코드나 QR을 띄워 주세요.</span></div>`}</div>
     ${c.open ? `<div class="danger"><div><b>연수 끝내기</b><p class="muted">이 연수의 코드 ${t.length}개가 바로 폐기되고, 더는 들어올 수 없습니다. 되돌릴 수 없습니다.</p></div><button class="btn danger-btn" id="close">연수 끝내기</button></div>` : ""}`;
