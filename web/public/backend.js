@@ -196,7 +196,7 @@ async function state(local) {
   };
   if (local) return s;
   await Promise.all([
-    settings.code && relayStatus(settings.code, relay()).then((r) => { s.relay = r.ok ? r.body : { error: r.body.error?.message ?? "확인 실패" }; }).catch((e) => { s.relay = { error: "중계 서버에 닿지 않습니다: " + e.message }; }),
+    settings.code && relayStatus(settings.code, relay()).then((r) => { s.relay = r.ok ? r.body : { error: r.body.error?.message ?? "확인 실패" }; }).catch(() => { s.relay = { error: "인터넷 연결을 확인해 주세요." }; }),
     hf.loggedIn && hf.balance().then((b) => { s.hf.credits = b.credits; s.hf.plan = b.subscription_plan_type; }).catch((e) => { s.hf.error = e.message; s.hf.logged_in = hf.loggedIn; }),
   ]);
   return s;

@@ -420,3 +420,14 @@ body { word-break: keep-all; overflow-wrap: anywhere; }
 dialog.video-save .acts { flex-direction: row-reverse; justify-content: flex-start; }
 .approve.answered-card .h { color: var(--text); }
 .approve.answered-card .acts .note { color: var(--muted); }
+
+/* 검사 5회차: 넓은 화면에서 입력창을 대화 폭(760)에 맞춤, 1024 폭에서 상단 표시·보내기 단추가 찌그러지지 않게 */
+.dock { max-width: min(760px, 100%); }
+.top .pill, .foot .fc { white-space: nowrap; flex: none; }
+.composer .send { flex: none; }
+@media (max-width: 1180px) {
+  .top .path, .foot .dnd { display: none; }
+  .composer .bar { flex-wrap: wrap; row-gap: 6px; }
+  .composer .send { margin-left: auto; }
+}
+@media (max-width: 1180px) { .foot { flex-wrap: wrap; gap: 2px 12px; } .foot > span:first-child { white-space: nowrap; } }

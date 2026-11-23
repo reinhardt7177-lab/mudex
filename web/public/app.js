@@ -580,7 +580,7 @@ function renderFoot() {
   // 이번 지시 비용은 쓴 돈이 있을 때만(일이 없을 때 '$0.0000'이 남지 않게)
   const cost = S.runCost > 0 || S.running ? `이번 지시 <b style="color:var(--sub)">${krw(S.runCost)}</b> ($${S.runCost.toFixed(4)})` : "";
   const left = rl && !rl.error && !rl.cohort ? `남은 한도 $${rl.remaining_usd.toFixed(2)}` : "";
-  $("#foot").innerHTML = S.jobId ? `<span>Enter 보내기 · Shift+Enter 줄바꿈 · 파일은 이 칸에 끌어다 놓기</span><span style="margin-left:auto">${[cost, left].filter(Boolean).join(" · ")}</span>` : "";
+  $("#foot").innerHTML = S.jobId ? `<span>Enter 보내기 · Shift+Enter 줄바꿈<span class="dnd"> · 파일은 이 칸에 끌어다 놓기</span></span><span class="fc" style="margin-left:auto">${[cost, left].filter(Boolean).join(" · ")}</span>` : "";
 }
 function renderSend() {
   const b = $("#send");
