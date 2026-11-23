@@ -198,6 +198,16 @@ export const CORE_TOOLS = [
     },
   },
   {
+    name: "read_guide",
+    description: "무덱스에 들어 있는 작업 양식을 읽는다. storyboard: 영상 스토리보드(컷·시간·샷·카메라·소리·전환 칸과 시트 모양), character_board: 캐릭터 보드(턴어라운드·표정·팔레트·그림 지시문 블록). 그 일을 시작할 때 읽고 따른다. 사용자가 다른 양식을 말하면 사용자 것을 따른다.",
+    parameters: { type: "object", properties: { name: { type: "string", enum: ["storyboard", "character_board"] } }, required: ["name"], additionalProperties: false },
+    async run(a) {
+      const r = await fetch(`/guides/${a.name}.md`);
+      if (!r.ok) throw new Error(`양식을 찾지 못했습니다: ${a.name}`);
+      return { guide: await r.text() };
+    },
+  },
+  {
     name: "ask_user",
     description: "사용자에게 고르게 한다. files를 주면 사진·영상을 보여 주고 하나를 고르게, options를 주면 글자 버튼으로 고르게 한다. 고른 값(파일 경로나 보기 글)을 돌려주고, 사용자가 다른 말을 하면 그 말을 돌려준다.",
     parameters: { type: "object", properties: { question: { type: "string" }, files: { type: "array", items: { type: "string" }, maxItems: 8 }, options: { type: "array", items: { type: "string" }, maxItems: 6 } }, required: ["question"], additionalProperties: false },

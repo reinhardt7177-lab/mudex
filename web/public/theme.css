@@ -393,3 +393,30 @@ body.pvmax .pvframe { min-height: calc(100vh - 140px); }
 .say .mdt th { background: var(--card2); font-weight: 600; white-space: nowrap; }
 .say .mdh { font-size: 15.5px; font-weight: 600; }
 .toast { top: 76px; }
+
+/* 커넥터 목록 창은 내용 높이만큼(아래 빈 공간 없음), 도구 목록 창은 그대로 고정 높이 */
+.cx.cx-fit { height: auto; max-height: min(680px, 90vh); display: flex; flex-direction: column; }
+.cx.cx-fit .cx-b { flex: 1 1 auto; min-height: 0; }
+
+/* 독립 검수 반영 */
+/* 한국어는 낱말 단위로 줄을 바꾼다(긴 주소·파일 이름은 넘치지 않게 어디서든 끊는다) */
+body { word-break: keep-all; overflow-wrap: anywhere; }
+/* 코드는 글자 중간에서 끊지 않고 가로로 민다 */
+.termblk, .termcard pre, .pvcode { white-space: pre; word-break: normal; overflow-wrap: normal; overflow-x: auto; }
+.termcard .th .mono { word-break: normal; overflow-wrap: anywhere; }
+.termcard .th > span:last-child { white-space: nowrap; }
+/* 부제는 한 줄, 넘치면 말줄임 */
+.brand > div { min-width: 0; }
+.brand small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 답한 허락 카드: 대기 색(주황)을 벗고 코드 칸을 접는다 */
+.approve.answered-card { background: var(--bg); border-color: var(--line); }
+.approve.answered-card::after { background: var(--line2); }
+.approve.answered-card .h .pill { color: var(--muted); border-color: var(--line2); background: transparent; }
+.approve.answered-card.ok .h .pill { color: var(--mint); border-color: var(--pill-mint-line); background: var(--mint-d); }
+.approve.answered-card .termblk { display: none; }
+/* 토스트는 대화를 가리지 않게 오른쪽 위 */
+.toast { left: auto; right: 24px; transform: none; top: 76px; bottom: auto; max-width: min(420px, calc(100vw - 48px)); }
+/* 대화상자 단추는 오른쪽, [닫기][주 단추] 순서(새 프로젝트 창과 같게) */
+dialog.video-save .acts { flex-direction: row-reverse; justify-content: flex-start; }
+.approve.answered-card .h { color: var(--text); }
+.approve.answered-card .acts .note { color: var(--muted); }

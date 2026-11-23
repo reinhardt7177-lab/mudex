@@ -5,6 +5,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtS = (s) => (s == null ? "" : `${Number(s).toFixed(s % 1 ? 3 : 0)}s`);
 const USD_KRW_RATE = 1335; // 표시용 참고 환율, 2026-11-16 기준
+const krw = (usd) => `약 ${Math.round((usd ?? 0) * USD_KRW_RATE).toLocaleString("ko-KR")}원`;
 const enc = (rel) => rel.split("/").map(encodeURIComponent).join("/");
 const fileUrl = (rel) => `/f/${encodeURIComponent(S.jobId)}/${enc(rel)}`;
 const thumbUrl = (rel) => `/thumb/${encodeURIComponent(S.jobId)}/${enc(rel)}`;
@@ -234,7 +235,7 @@ const TOOL_META = {
   run_command: ["term", "명령 실행"], run_js: ["term", "코드 실행"], check_page: ["eye", "페이지 열어 확인"], download_file: ["down", "내려받기"], upload_file: ["up", "올리기"], make_image: ["image", "그림 그리기"],
   web_search: ["search", "인터넷 검색"], mcp_list_tools: ["search", "커넥터 도구 찾기"], mcp_describe: ["plug", "도구 설명 보기"], mcp_call: ["plug", "커넥터 도구 부르기"],
   list_clips: ["film", "클립 살펴보기"], probe: ["gauge", "길이 재기"], trim: ["cut", "자르기"], concat: ["join", "이어 붙이기"],
-  add_music: ["music", "음악 얹기"], export_final: ["down", "내보내기"], measure: ["gauge", "결과 재기"], run_ffmpeg: ["film", "영상 편집(ffmpeg)"],
+  add_music: ["music", "음악 얹기"], export_final: ["down", "내보내기"], measure: ["gauge", "결과 재기"], run_ffmpeg: ["film", "영상 편집(ffmpeg)"], read_guide: ["list", "양식 읽기"],
   higgsfield_clip: ["film", "힉스필드로 영상 만들기"], review_sheet: ["grid", "8fps 검수 시트"],
 };
 const SILENT_TOOLS = new Set(["update_plan", "ask_user", "set_plan", "ask_pick"]);
@@ -523,6 +524,8 @@ function markAnswered(e) {
     const yesTxt = k2 === "command" ? (e.value === "always" ? "실행함 · 이번엔 계속 허락" : "실행함") : k2 === "mcp" ? "실행함" : "생성함";
     const noTxt = k2 ? "하지 않음" : "생성 안 함";
     $(".acts", card).innerHTML = `<span class="answered ${yes ? "yes" : "no"}">${yes ? icon("check", 14) : icon("x", 14)} ${yes ? yesTxt : noTxt}</span><span class="note">${t} 답함</span>`;
+    card.classList.add("answered-card", yes ? "ok" : "no");
+    const pill = $(".h .pill", card); if (pill) pill.textContent = yes ? "허락함" : "거절함";
   } else {
     for (const fig of card.querySelectorAll("figure")) { const on = fig.dataset.f === e.value; fig.classList.toggle("pick", on); if (on) fig.dataset.n = ""; }
     card.querySelectorAll("[data-opt]").forEach((b) => { b.disabled = true; if (b.dataset.opt === e.value) b.classList.add("pri"); });
@@ -548,11 +551,13 @@ function renderSheet(e) {
 
 function renderDone(e) {
   const v = e.verify;
+  // done의 cost_usd는 대화 비용만 담는다. 그림 비용까지 합친 이번 지시 전체는 cost 소식을 모은 runCost
+  const total = Math.max(S.runCost, e.cost_usd ?? 0);
   if (v) {
     const L = v.loudness;
     const okLen = true;
     addEl(`<div class="result">
-      <div class="result-h">결과를 프로그램이 직접 쟀어요 <span class="pill mint">${(e.seconds ?? 0)}초 · $${(e.cost_usd ?? 0).toFixed(4)}</span></div>
+      <div class="result-h">결과를 프로그램이 직접 쟀어요 <span class="pill mint">${(e.seconds ?? 0)}초 · ${krw(total)} ($${total.toFixed(4)})</span></div>
       <div class="kpis">
         <div class="kpi"><div class="k">길이</div><div class="v">${Number(v.duration).toFixed(3)}<small> 초</small></div><div class="t">${v.width}×${v.height} · ${v.fps}fps</div></div>
         <div class="kpi"><div class="k">음량</div><div class="v">${L ? L.integrated_lufs : "—"}<small> LUFS</small></div><div class="t" style="${L && Math.abs(L.integrated_lufs + 14) > 1 ? "color:var(--amber)" : ""}">유튜브 기준 −14 ${L && Math.abs(L.integrated_lufs + 14) <= 1 ? icon("check", 12) : ""}</div></div>
@@ -560,8 +565,8 @@ function renderDone(e) {
       </div>
       <div class="file">${esc(v.file)}${v.size ? ` · ${(v.size / 1048576).toFixed(1)}MB` : ""} <button class="btn" data-play="${esc(v.file)}">▶ 재생</button><button class="btn" data-download-video="${esc(v.file)}" data-download-job="${esc(S.jobId)}">영상 다운로드</button><button class="btn ghost" data-open>폴더 열기</button></div></div>`);
     void okLen;
-  } else if (e.cost_usd) {
-    addEl(`<div class="muted">이번 지시 $${e.cost_usd.toFixed(4)} · ${e.seconds}초</div>`);
+  } else if (total) {
+    addEl(`<div class="muted">이번 지시 ${krw(total)} ($${total.toFixed(4)}) · ${e.seconds}초</div>`);
   }
 }
 
@@ -572,7 +577,10 @@ function renderPlan() {
 }
 function renderFoot() {
   const rl = S.st?.relay;
-  $("#foot").innerHTML = S.jobId ? `<span>Enter 보내기 · Shift+Enter 줄바꿈 · 파일은 이 칸에 끌어다 놓기</span><span style="margin-left:auto">이번 지시 <b class="mono" style="color:var(--sub)">$${S.runCost.toFixed(4)}</b>${rl && !rl.error && !rl.cohort ? ` · 남은 한도 ${rl.remaining_usd.toFixed(2)}` : ""}</span>` : "";
+  // 이번 지시 비용은 쓴 돈이 있을 때만(일이 없을 때 '$0.0000'이 남지 않게)
+  const cost = S.runCost > 0 || S.running ? `이번 지시 <b style="color:var(--sub)">${krw(S.runCost)}</b> ($${S.runCost.toFixed(4)})` : "";
+  const left = rl && !rl.error && !rl.cohort ? `남은 한도 $${rl.remaining_usd.toFixed(2)}` : "";
+  $("#foot").innerHTML = S.jobId ? `<span>Enter 보내기 · Shift+Enter 줄바꿈 · 파일은 이 칸에 끌어다 놓기</span><span style="margin-left:auto">${[cost, left].filter(Boolean).join(" · ")}</span>` : "";
 }
 function renderSend() {
   const b = $("#send");
@@ -654,7 +662,7 @@ function renderRight() {
     rb.innerHTML = sh ? `<div class="sec-t">8fps 검수 <span class="r">${esc(sh.file)}</span></div>
       <div class="big-sheet">${sh.frames.map((f) => `<figure><img src="${fileUrl(f.file)}" data-zoom="${fileUrl(f.file)}" alt=""><figcaption>${f.t.toFixed(3)}s</figcaption></figure>`).join("")}</div>
       <div class="muted">사진을 누르면 크게 봅니다. 착지·전환 순간이 이상하면 "다시 뽑아 줘" 또는 "1.5초 앞에서 잘라 줘"라고 말하세요.</div>`
-      : `<div class="muted">생성한 컷의 움직임을 1초 8장으로 쪼개 보여 줍니다. "C05를 1초부터 검수해 줘"라고 말해 보세요.</div>`;
+      : `<div class="muted">생성한 컷의 움직임을 1초 8장으로 쪼개 보여 줍니다. "clips/장면1.mp4를 1초부터 검수해 줘"라고 말해 보세요.</div>`;
   } else {
     const ficon = (f) => icon(f.kind === "audio" ? "music" : f.kind === "html" ? "eye" : "file", 18);
     const sz = (n) => (n < 1024 ? `${n}B` : n < 1048576 ? `${(n / 1024).toFixed(0)}KB` : `${(n / 1048576).toFixed(1)}MB`);
@@ -824,7 +832,7 @@ function renderCxList() {
   const feat = hf?.connected ? "" : `<div class="feat"><div class="av hf">H</div>
       <div><div class="k">추천 커넥터</div><div class="nm">Higgsfield</div><div class="u">영상·이미지 생성 도구 185개 · 내 힉스필드 계정 크레딧으로 만들어요</div></div>
       <button class="btn pri" id="cxFeat">${hf?.logging_in ? "다시 로그인" : "한 번에 연결"}</button></div>`;
-  CX.el.innerHTML = `<div class="cx">${cxHead("커넥터", "무덱스가 바깥 서비스의 도구를 쓰게 연결합니다. 클로드의 '커넥터 추가'와 같은 방식(원격 MCP)입니다.")}
+  CX.el.innerHTML = `<div class="cx cx-fit">${cxHead("커넥터", "무덱스가 바깥 서비스의 도구를 쓰게 연결합니다. 클로드의 '커넥터 추가'와 같은 방식(원격 MCP)입니다.")}
     <div class="cx-b">${feat}
     ${CX.list.map((c) => `<div class="cc"><div class="av ${c.connected ? "on" : ""}">${esc(c.name[0] ?? "?")}</div>
       <div><div class="nm">${esc(c.name)} ${c.practice ? `<span class="pill amber">연습 모드</span>` : ""} ${c.connected ? `<span class="pill mint">● 연결됨${c.tools_count ? ` · 도구 ${c.tools_count}` : ""}</span>` : c.logging_in ? `<span class="pill violet">로그인 기다리는 중…</span>` : `<span class="pill">연결 안 됨</span>`}</div><div class="u">${esc(c.url)}</div></div>
@@ -941,7 +949,7 @@ async function sendOnce(fromKey) {
   // 프로젝트 없이 보내면 첫마디로 이름을 지어 새로 만든다
   if (!S.jobId) {
     const flat = t.replace(/\s+/g, " ");
-    const name = flat.length <= 22 ? flat : flat.slice(0, 22).replace(/\s\S*$/, "") || flat.slice(0, 22);
+    const name = flat.length <= 22 ? flat : (flat.slice(0, 22).replace(/\s\S*$/, "") || flat.slice(0, 22)) + "…";
     const { id } = await api("POST", "/api/jobs", { name });
     await refreshState(); await openJob(id);
   }
