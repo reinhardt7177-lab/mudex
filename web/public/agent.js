@@ -46,7 +46,7 @@ export async function relayPost(relay, path, code, body, signal) {
     } catch (e) { if (signal?.aborted) throw new Error("멈췄습니다."); netErr = e; }
     if (r?.ok && j) return j;
     const again = netErr || r.status === 429 || r.status >= 500;
-    if (!again || i >= waits.length) throw new Error(j?.error?.message ?? (netErr ? `중계 서버에 닿지 않습니다: ${netErr.message}` : `중계 서버 오류 ${r.status}`));
+    if (!again || i >= waits.length) throw new Error(j?.error?.message ?? (netErr ? "인터넷 연결이 끊겼거나 중계 서버에 닿지 않습니다. 연결을 확인하고 다시 보내 주세요." : `중계 서버 오류 ${r.status}`));
     const sec = Math.min(30, Number(r?.headers.get("retry-after")) || waits[i]);
     await new Promise((res, rej) => { const t = setTimeout(res, sec * 1000); signal?.addEventListener("abort", () => { clearTimeout(t); rej(new Error("멈췄습니다.")); }, { once: true }); });
   }
