@@ -128,3 +128,9 @@ label { display: grid; gap: 6px; font-size: 12px; font-weight: 500; color: var(-
   .pmain { grid-template-columns: 1fr; }
   .two { grid-template-columns: 1fr; }
 }
+
+.rm .nw { white-space: nowrap; }
+
+/* 한국어 줄바꿈, 폰에서 상세로 내려갈 때 머리줄에 가리지 않게 */
+body { word-break: keep-all; overflow-wrap: anywhere; }
+.right, .right h2 { scroll-margin-top: 72px; }

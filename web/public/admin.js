@@ -87,7 +87,7 @@ async function loadList() {
   if (!selected && rows.find((c) => c.open)) selected = rows.find((c) => c.open).id;
   $("#list").innerHTML = rows.length ? rows.map((c) => `<button class="row ${c.id === selected ? "on" : ""}" data-id="${c.id}">
       <span class="rn">${esc(c.name)}</span><span class="pill ${c.open ? "live" : ""}">${c.open ? "진행 중" : "끝남"}</span>
-      <span class="rm"><span class="code">${esc(c.entry_code)}</span> · ${c.trainees}명 · ${money(c.spent)}${c.budget_usd != null ? ` / ${money(c.budget_usd)}` : ""} · ${md(c.ends_at)} ${hm(c.ends_at)}까지</span></button>`).join("")
+      <span class="rm"><span class="code">${esc(c.entry_code)}</span> · ${c.trainees}명 · ${money(c.spent)}${c.budget_usd != null ? ` / ${money(c.budget_usd)}` : ""} · <span class="nw">${md(c.ends_at)} ${hm(c.ends_at)}까지</span></span></button>`).join("")
     : `<div class="muted">아직 만든 연수가 없어요.</div>`;
   document.querySelectorAll(".row").forEach((b) => (b.onclick = () => { selected = b.dataset.id; loadList(); loadDetail(); }));
 }
