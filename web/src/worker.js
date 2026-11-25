@@ -1,7 +1,7 @@
 // 무덱스 웹판 워커: 정적 화면을 내주고, 브라우저 직접 호출을 막는 MCP 서버만 넘겨준다(/proxy).
 // 넘겨주기만 하고 아무것도 저장·기록하지 않는다(토큰이 지나가므로 로그도 남기지 않는다).
 const ALLOW = new Set(["mcp.higgsfield.ai"]);
-const PASS_REQ = ["authorization", "content-type", "accept", "mcp-protocol-version", "mcp-session-id", "last-event-id"];
+const PASS_REQ = ["authorization", "content-type", "accept", "mcp-protocol-version", "mcp-session-id", "last-event-id", "user-agent", "accept-language"];
 const PASS_RES = ["content-type", "mcp-session-id", "www-authenticate", "cache-control"];
 
 async function proxy(req) {

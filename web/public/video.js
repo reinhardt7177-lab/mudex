@@ -214,9 +214,12 @@ export const VIDEO_TOOLS = [
       const dur = (frames / fps).toFixed(6);
       const out = tmpName(a.output);
       let loud = null;
+      // 소리 길이 완전히 무음이면(재면 -inf) 음량을 맞출 수 없으니 소리 길을 빼고 영상만 내보낸다
+      const L0 = info.has_audio ? await loudnessNamed(ff, n, ctx) : null;
+      if (L0 && !Number.isFinite(L0.integrated_lufs)) info.has_audio = false;
       if (info.has_audio) {
         // 음량: 이득을 올리고 리미터로 피크를 누른 뒤, 다시 재서 한 번 더 보정한다(소리만 다루므로 빠르다)
-        let gain = I - ((await loudnessNamed(ff, n, ctx))?.integrated_lufs ?? I);
+        let gain = I - (L0?.integrated_lufs ?? I);
         for (let pass = 0; pass < 3; pass++) {
           await exec(ff, ["-i", n, "-vn", "-af", `apad,atrim=0:${dur},volume=${gain.toFixed(2)}dB,alimiter=limit=0.8:level=0:attack=5:release=50`, "-ar", "48000", "-ac", "2", "loud.wav"], ctx);
           const got = (await loudnessNamed(ff, "loud.wav", ctx))?.integrated_lufs ?? I;

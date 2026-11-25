@@ -4,6 +4,31 @@
 import { McpClient, HIGGSFIELD_MCP_URL } from "./mcp-client.js";
 
 export const SAFE_TOOLS = ["balance", "models_explore", "list_workspaces", "get_preferences", "list_voices", "list_projects"];
+// 화면에 보일 우리말 이름과 한 줄 설명(힉스필드 도구). 없는 도구는 영어 이름 그대로 보인다.
+export const TOOL_KO = {
+  balance: ["크레딧 보기", "남은 크레딧과 요금제를 봅니다."],
+  list_workspaces: ["작업 공간 보기", "쓸 수 있는 작업 공간을 봅니다."],
+  models_explore: ["모델 찾아보기", "쓸 수 있는 생성 모델과 설정을 봅니다."],
+  media_upload: ["그림·파일 올리기", "내 힉스필드 계정에 그림이나 파일을 올립니다. 크레딧은 들지 않아요."],
+  media_confirm: ["올린 파일 확인", "올린 파일이 잘 들어갔는지 확인합니다. 크레딧은 들지 않아요."],
+  media_import_url: ["주소로 파일 가져오기", "인터넷 주소의 파일을 힉스필드로 가져옵니다."],
+  estimate_video_cost: ["영상 비용 미리 보기", "영상을 만들면 크레딧이 얼마나 드는지 미리 봅니다. 크레딧은 들지 않아요."],
+  estimate_image_cost: ["그림 비용 미리 보기", "그림을 만들면 크레딧이 얼마나 드는지 미리 봅니다. 크레딧은 들지 않아요."],
+  estimate_audio_cost: ["소리 비용 미리 보기", "소리를 만들면 크레딧이 얼마나 드는지 미리 봅니다. 크레딧은 들지 않아요."],
+  generate_video: ["영상 만들기", "힉스필드에서 영상을 만듭니다."],
+  generate_video_batch: ["영상 여러 개 만들기", "힉스필드에서 영상을 여러 개 한꺼번에 만듭니다."],
+  generate_image: ["그림 만들기", "힉스필드에서 그림을 만듭니다."],
+  generate_image_batch: ["그림 여러 개 만들기", "힉스필드에서 그림을 여러 장 한꺼번에 만듭니다."],
+  generate_audio: ["소리 만들기", "힉스필드에서 소리를 만듭니다."],
+  upscale_image: ["그림 화질 높이기", "그림을 더 선명하고 크게 만듭니다."],
+  upscale_video: ["영상 화질 높이기", "영상을 더 선명하고 크게 만듭니다."],
+  remove_background: ["배경 지우기", "그림의 배경을 지웁니다."],
+  job_status: ["진행 확인", "만드는 중인 작업이 얼마나 됐는지 봅니다."],
+  jobs_wait: ["다 될 때까지 기다리기", "만드는 중인 작업이 끝날 때까지 기다립니다."],
+  job_display: ["결과 보기", "다 만든 결과를 봅니다."],
+  show_generations: ["만든 것 보기", "지금까지 만든 그림·영상을 봅니다."],
+};
+export const toolKo = (name) => TOOL_KO[name]?.[0] ?? name;
 const KEY = "mudex.connectors";
 const isHiggsfield = (url) => { try { return new URL(url).host === new URL(HIGGSFIELD_MCP_URL).host; } catch { return false; } };
 let PRACTICE = null;

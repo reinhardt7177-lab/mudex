@@ -61,7 +61,12 @@ export async function pickLocalFolder(taken) {
   return id;
 }
 export async function forgetLocal(id) { locals.delete(id); await idbDel(id); }
-export async function localPermission(id) { const h = locals.get(id); return h ? h.queryPermission({ mode: "readwrite" }) : "granted"; }
+// 크롬에 따라 허용 확인이 끝나지 않고 멈출 때가 있어, 1.5초 안에 답이 없으면 '다시 허용 필요'로 본다(화면 전체가 멈추지 않게)
+export async function localPermission(id) {
+  const h = locals.get(id);
+  if (!h) return "granted";
+  return Promise.race([h.queryPermission({ mode: "readwrite" }).catch(() => "prompt"), new Promise((r) => setTimeout(() => r("prompt"), 1500))]);
+}
 export async function grantLocal(id) {
   const h = locals.get(id);
   if (h && (await h.requestPermission({ mode: "readwrite" })) !== "granted") throw new Error("폴더 허용을 받지 못했습니다.");

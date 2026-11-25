@@ -72,6 +72,8 @@ export class McpClient {
     url.search = new URLSearchParams({
       response_type: "code", client_id: client.client_id, redirect_uri: this.redirect(), scope: scopes.join(" "),
       state, code_challenge: await sha256(verifier), code_challenge_method: "S256", resource,
+      // 연수실 PC는 여럿이 함께 쓰므로, 브라우저에 남은 다른 사람 로그인으로 그냥 넘어가지 않고 매번 로그인 화면을 띄운다
+      prompt: "login",
     }).toString();
     const pre = window.__mudexPopup; window.__mudexPopup = null;
     let popup = pre && !pre.closed ? pre : null;
