@@ -18,11 +18,14 @@ async function getJson(url, opts) {
   let body; try { body = JSON.parse(text); } catch { body = text; }
   return { status: r.status, body };
 }
-const store = {
-  get: (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-  set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
-  del: (k) => localStorage.removeItem(k),
-};
+const mk = (S) => ({
+  get: (k) => { try { return JSON.parse(S.getItem(k)); } catch { return null; } },
+  set: (k, v) => S.setItem(k, JSON.stringify(v)),
+  del: (k) => S.removeItem(k),
+});
+const store = mk(localStorage);
+// 로그인 토큰은 이 탭에만 둔다: 창을 닫으면 지워져, 같은 PC를 쓰는 다음 사람이 앞사람 계정으로 쓰지 않는다
+const tokens = mk(sessionStorage);
 
 export class McpClient {
   constructor({ url = HIGGSFIELD_MCP_URL, key = "hf", label = "힉스필드" } = {}) {
@@ -30,10 +33,13 @@ export class McpClient {
     this.tokenKey = `mudex.mcp.${key}.token`;
     this.clientKey = `mudex.mcp.${key}.client`;
     this.session = null; this.nextId = 1; this.pendingLogin = null;
+    localStorage.removeItem(this.tokenKey); // 예전 판이 브라우저에 남긴 토큰 정리
   }
-  get token() { return store.get(this.tokenKey); }
+  get token() { return tokens.get(this.tokenKey); }
   get loggedIn() { return !!this.token; }
-  logout() { store.del(this.tokenKey); this.session = null; }
+  // 로그인한 계정 이메일(id_token 안). 화면에 '누구 계정인지' 보여 주는 데만 쓴다
+  get account() { try { return JSON.parse(atob(this.token.id_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).email ?? null; } catch { return null; } }
+  logout() { tokens.del(this.tokenKey); this.session = null; }
 
   async discover() {
     const u = new URL(this.url);
@@ -89,7 +95,7 @@ export class McpClient {
             body: new URLSearchParams({ grant_type: "authorization_code", code: e.data.code, redirect_uri: this.redirect(), client_id: client.client_id, code_verifier: verifier, resource }),
           });
           if (tok.status >= 300) throw new Error("토큰 교환 실패 " + tok.status);
-          store.set(this.tokenKey, { ...tok.body, obtained_at: Date.now(), token_endpoint: as.token_endpoint, client_id: client.client_id, resource });
+          tokens.set(this.tokenKey, { ...tok.body, obtained_at: Date.now(), token_endpoint: as.token_endpoint, client_id: client.client_id, resource });
           this.session = null;
           finish();
         } catch (err) { finish(err); }
@@ -112,7 +118,7 @@ export class McpClient {
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: t.client_id, resource: t.resource }),
     });
     if (r.status >= 300) { this.logout(); throw new Error(`${this.label} 연결이 만료되었습니다. 다시 연결해 주세요.`); }
-    store.set(this.tokenKey, { ...t, ...r.body, obtained_at: Date.now() });
+    tokens.set(this.tokenKey, { ...t, ...r.body, obtained_at: Date.now() });
     this.session = null;
   }
 

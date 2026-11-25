@@ -115,7 +115,8 @@ function renderSide() {
   const rl = st?.relay;
   const hfRow = hf.logged_in
     ? `<div class="conn-row"><span class="led ${hf.error ? "warn" : ""}"></span><span>힉스필드</span><span class="v">${hf.credits != null ? `${hf.credits} 크레딧` : `<span style="color:var(--muted);font-weight:400" title="${esc(hf.error ?? "")}">${hf.error ? "연결됨 · 크레딧 못 읽음" : "확인 중"}</span>`}</span>
-       <div class="meter"><i style="width:${Math.min(100, ((hf.credits ?? 0) / 200) * 100)}%;background:var(--violet)"></i></div></div>`
+       <div class="meter"><i style="width:${Math.min(100, ((hf.credits ?? 0) / 200) * 100)}%;background:var(--violet)"></i></div></div>
+       <div class="conn-foot"><span title="지금 연결된 힉스필드 계정">${esc(hf.account ? hf.account.replace(/^(.{1,3})[^@]*/, "$1···") : "계정 확인 못 함")}</span><span class="act" id="hfOut" style="cursor:pointer">연결 끊기</span></div>`
     : `<div class="conn-row"><span class="led off"></span><span>힉스필드</span><span class="act" id="hfLogin">${hf.logging_in ? "연결 중…" : "연결하기"}</span></div>`;
   const codeRow = !st?.code_set
     ? `<div class="conn-row"><span class="led off"></span><span>연수</span><span class="act" id="setCode">들어가기</span></div>`
@@ -129,6 +130,7 @@ function renderSide() {
          <div class="conn-foot"><span class="mono">${esc(st.code_hint)}</span><span>${rl?.expires_at ? new Date(rl.expires_at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }) + "까지" : ""}</span></div>`;
   $("#conn").innerHTML = hfRow + codeRow;
   $("#hfLogin")?.addEventListener("click", () => openConnectors());
+  $("#hfOut")?.addEventListener("click", async () => { await api("POST", "/api/hf/logout").catch(() => {}); toast("힉스필드 연결을 끊었어요."); refreshState(); });
   $("#setCode")?.addEventListener("click", () => showEntry());
 }
 
@@ -835,7 +837,7 @@ function renderCxList() {
   CX.el.innerHTML = `<div class="cx cx-fit">${cxHead("커넥터", "무덱스가 바깥 서비스의 도구를 쓰게 연결합니다. 클로드의 '커넥터 추가'와 같은 방식(원격 MCP)입니다.")}
     <div class="cx-b">${feat}
     ${CX.list.map((c) => `<div class="cc"><div class="av ${c.connected ? "on" : ""}">${esc(c.name[0] ?? "?")}</div>
-      <div><div class="nm">${esc(c.name)} ${c.practice ? `<span class="pill amber">연습 모드</span>` : ""} ${c.connected ? `<span class="pill mint">● 연결됨${c.tools_count ? ` · 도구 ${c.tools_count}` : ""}</span>` : c.logging_in ? `<span class="pill violet">로그인 기다리는 중…</span>` : `<span class="pill">연결 안 됨</span>`}</div><div class="u">${esc(c.url)}</div></div>
+      <div><div class="nm">${esc(c.name)} ${c.practice ? `<span class="pill amber">연습 모드</span>` : ""} ${c.connected ? `<span class="pill mint">● 연결됨${c.account ? ` · ${esc(c.account.replace(/^(.{1,3})[^@]*/, "$1···"))}` : ""}${c.tools_count ? ` · 도구 ${c.tools_count}` : ""}</span>` : c.logging_in ? `<span class="pill violet">로그인 기다리는 중…</span>` : `<span class="pill">연결 안 됨</span>`}</div><div class="u">${esc(c.url)}</div></div>
       <div class="acts" data-id="${c.id}">${c.connected ? `<button class="btn" data-a="tools">도구 보기</button><button class="btn ghost" data-a="disconnect">연결 끊기</button>` : `<button class="btn vio" data-a="connect">연결</button>`}<button class="btn ghost" data-a="remove" title="목록에서 빼기" aria-label="목록에서 빼기">${icon("trash")}</button></div></div>`).join("")}
     <div class="addf"><b>＋ 커스텀 커넥터 추가</b>
       <label>이름<input type="text" id="cxName" placeholder="예) Higgsfield"></label>
