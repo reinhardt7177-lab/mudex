@@ -1,5 +1,6 @@
 // 무덱스 화면(웹판). /api와 실시간 이벤트는 backend.js가 브라우저 안에서 받아 처리한다.
 import { ready, openLocalFolder, grantFolder, fileBlob } from "./backend.js";
+import { toolKo, TOOL_KO } from "./connectors.js";
 await ready;
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -113,7 +114,7 @@ function renderSide() {
   const hf = st?.hf ?? {};
   const rl = st?.relay;
   const hfRow = hf.logged_in
-    ? `<div class="conn-row"><span class="led ${hf.error ? "warn" : ""}"></span><span>힉스필드</span><span class="v">${hf.credits != null ? `${hf.credits} 크레딧` : `<span style="color:var(--muted);font-weight:400">확인 중</span>`}</span>
+    ? `<div class="conn-row"><span class="led ${hf.error ? "warn" : ""}"></span><span>힉스필드</span><span class="v">${hf.credits != null ? `${hf.credits} 크레딧` : `<span style="color:var(--muted);font-weight:400" title="${esc(hf.error ?? "")}">${hf.error ? "연결됨 · 크레딧 못 읽음" : "확인 중"}</span>`}</span>
        <div class="meter"><i style="width:${Math.min(100, ((hf.credits ?? 0) / 200) * 100)}%;background:var(--violet)"></i></div></div>`
     : `<div class="conn-row"><span class="led off"></span><span>힉스필드</span><span class="act" id="hfLogin">${hf.logging_in ? "연결 중…" : "연결하기"}</span></div>`;
   const codeRow = !st?.code_set
@@ -251,7 +252,7 @@ function toolSummary(name, a = {}) {
     case "make_image": return `이미지 생성 · ${a.count ?? 1}장 · 크레딧 0`;
     case "web_search": return `"${a.query ?? ""}"`;
     case "mcp_list_tools": return `${a.connector ?? "전체"}${a.query ? ` · "${a.query}"` : ""}`;
-    case "mcp_describe": case "mcp_call": return `${a.connector ?? ""} · ${a.tool}`;
+    case "mcp_describe": case "mcp_call": return `${a.connector ?? ""} · ${toolKo(a.tool)}`;
     case "trim": return `${a.input} · ${Number(a.start).toFixed(2)} → ${Number(a.end).toFixed(2)}`;
     case "concat": return `${(a.inputs ?? []).length}개 → ${a.output}`;
     case "add_music": return `${a.music}${a.fade_out ? ` · 끝 ${a.fade_out}초 페이드` : ""}`;
@@ -474,17 +475,16 @@ function renderAsk(e, live) {
     if (!activeNow) { card.dataset.done = 1; $(".acts", card).innerHTML = `<span class="note">지난 질문</span>`; }
   } else if (e.kind === "approve" && e.kind2 === "mcp") {
     const after = e.balance != null && e.credits != null ? ` · ${e.balance} → ${Math.round((e.balance - e.credits) * 100) / 100}` : "";
+    const name = e.tool_ko ?? toolKo(e.tool);
+    if (!e.tool_ko && TOOL_KO[e.tool]) e = { ...e, summary: TOOL_KO[e.tool][1] }; // 예전 기록도 우리말로
     const card = addEl(`<div class="approve" data-ask="${e.ask_id}" data-k2="mcp">
-      <div class="h">${esc(e.title)} ${e.practice ? `<span class="pill amber">연습 모드</span>` : ""} <span class="pill">${e.credits != null ? "크레딧 허락 필요" : "MCP 허락"}</span></div>
-      <div class="spec">
-        <div><div class="k">커넥터</div><div class="v">${esc(e.connector)}</div></div>
-        <div><div class="k">도구</div><div class="v">${esc(e.tool)}</div></div>
-        ${e.credits != null ? `<div><div class="k">크레딧</div><div class="v" style="color:var(--amber)">${e.credits}<span style="color:var(--muted);font-weight:500">${after}</span></div></div>` : ""}
-      </div>
-      <div class="prompt">${esc(e.summary)}</div>
-      <pre class="termblk">${esc(e.args)}</pre>
+      <div class="h">${esc(e.connector)}에서 ${esc(name)}${e.credits != null ? "" : "를 할까요?"} ${e.practice ? `<span class="pill amber">연습 모드</span>` : ""} <span class="pill">${e.credits != null ? "크레딧 허락 필요" : "허락 필요"}</span></div>
+      ${e.credits != null ? `<div class="credit-big"><b>${e.credits} 크레딧</b>을 씁니다${e.balance != null ? `<span>남는 크레딧 ${e.balance} → ${Math.round((e.balance - e.credits) * 100) / 100}</span>` : ""}</div>` : ""}
+      <div class="prompt">${esc(e.context ?? e.summary)}</div>
+      ${e.context && e.summary !== e.context ? `<div class="note" style="margin-top:-4px">${esc(e.summary)}</div>` : ""}
+      <details class="raw"><summary>보내는 내용 자세히 보기 · ${esc(e.tool)}</summary><pre class="termblk">${esc(e.args)}</pre></details>
       ${e.balance != null && e.credits != null && e.balance < e.credits ? `<div class="flagnote">△ 크레딧이 모자라요. 실행하면 실패합니다.</div>` : ""}
-      <div class="acts"><button class="btn vio">실행</button><button class="btn ghost">하지 마</button><span class="note">허락 없이는 바깥 서비스에서 만들거나 바꾸지 않아요</span></div></div>`);
+      <div class="acts"><button class="btn vio">${e.credits != null ? `${e.credits} 크레딧 쓰고 실행` : "실행"}</button><button class="btn ghost">하지 마</button><span class="note">허락 없이는 바깥 서비스에서 만들거나 바꾸지 않아요</span></div></div>`);
     $(".vio", card).onclick = () => answer(e.ask_id, "yes");
     $(".ghost", card).onclick = () => answer(e.ask_id, "no");
     if (!activeNow) { card.dataset.done = 1; $(".acts", card).innerHTML = `<span class="note">지난 질문</span>`; }

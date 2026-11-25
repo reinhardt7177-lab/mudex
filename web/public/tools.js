@@ -3,6 +3,7 @@
 // ctx: { ws, emit, ask, approval, session, code, relay, signal, job }
 import { kindOf, mimeOf } from "./opfs.js";
 import { relayPost } from "./agent.js";
+import { TOOL_KO } from "./connectors.js";
 
 const TEXT_EXT = /\.(txt|md|html?|css|js|mjs|cjs|ts|tsx|jsx|json|csv|tsv|py|xml|svg|yml|yaml|toml|ini|srt|vtt|log)$/i;
 const MAX = 12000;
@@ -216,7 +217,10 @@ export const CORE_TOOLS = [
 ];
 
 // ---- MCP 다리: 찾기 → 설명 → 부르기(PC판 mcp_bridge와 같은 규칙)
-const READ_ONLY = /^(balance|transactions|models_explore|list_|get_|search|show_|job_status|jobs_wait|job_display|apps_search|apps_describe)/;
+// 크레딧이 들지 않는 도구는 묻지 않고 바로 한다(올리기·올린 것 확인·비용 미리 보기 포함)
+const READ_ONLY = /^(balance|transactions|models_explore|list_|get_|search|show_|job_status|jobs_wait|job_display|apps_search|apps_describe|media_upload|media_confirm|estimate_)/;
+// 비용 미리 보기 결과(견적 번호 → 크레딧). 견적 번호로 만들 때 허락 카드에 크레딧을 보여 주려고 기억해 둔다.
+const QUOTES = new Map();
 function costPreviewArgs(schema, args) {
   const p = schema?.properties ?? {};
   if ((p.params?.anyOf?.some((x) => x.properties?.get_cost) || p.params?.properties?.get_cost) && args.params && typeof args.params === "object") return { ...args, params: { ...args.params, get_cost: true } };
@@ -279,13 +283,21 @@ export const MCP_TOOLS = [
             credits = r?.cost?.credits ?? null; break;
           }
         }
+        const ref = args.params?.ref ?? args.ref;
+        if (credits == null && typeof ref === "string" && QUOTES.has(ref)) credits = QUOTES.get(ref);
+        // 여러 개 한꺼번에(batch): 요청마다 견적 번호가 있으면 더한다
+        const refs = Array.isArray(args.requests) ? args.requests.map((q) => q?.params?.ref ?? q?.ref) : [];
+        if (credits == null && refs.length && refs.every((x) => QUOTES.has(x))) credits = refs.reduce((s, x) => s + QUOTES.get(x), 0);
         const balance = credits != null ? (await ctx.connectors.callAny(c.id, "balance", {}).catch(() => null))?.credits ?? null : null;
         if (ctx.approval !== "auto" || credits != null || c.practice) {
-          const ans = await ctx.ask("approve", { kind2: "mcp", title: credits != null ? "크레딧을 써서 실행할까요?" : "이 도구를 실행할까요?", connector: c.name, tool: a.tool, practice: !!c.practice, args: clip(JSON.stringify(args, null, 2)), credits, balance, summary: (t.description ?? "").replace(/\s+/g, " ").slice(0, 200) });
+          const ko = TOOL_KO[a.tool];
+          const ans = await ctx.ask("approve", { kind2: "mcp", title: credits != null ? "크레딧을 써서 실행할까요?" : "이 도구를 실행할까요?", connector: c.name, tool: a.tool, tool_ko: ko?.[0] ?? null, practice: !!c.practice, args: clip(JSON.stringify(args, null, 2)), credits, balance,
+            context: typeof args.context === "string" ? args.context : null, summary: ko?.[1] ?? (t.description ?? "").replace(/\s+/g, " ").slice(0, 200) });
           if (ans !== "yes") return { approved: false, user_said: ans };
         }
       }
       const res = await ctx.connectors.callAny(c.id, a.tool, args);
+      if (/^estimate_/.test(a.tool) && res?.quote_ref && res?.cost?.credits != null) QUOTES.set(res.quote_ref, res.cost.credits);
       const text = JSON.stringify(res);
       return text.length > MAX ? { truncated: true, result: clip(text) } : res;
     },

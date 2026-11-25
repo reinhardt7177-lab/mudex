@@ -431,3 +431,15 @@ dialog.video-save .acts { flex-direction: row-reverse; justify-content: flex-sta
   .composer .send { margin-left: auto; }
 }
 @media (max-width: 1180px) { .foot { flex-wrap: wrap; gap: 2px 12px; } .foot > span:first-child { white-space: nowrap; } }
+
+/* 검사 6회차: 허락 카드 우리말·크레딧 크게, 대화 폭 넓게(760 → 860) */
+.col { max-width: 860px; }
+.dock { max-width: min(860px, 100%); }
+.approve .credit-big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 15px; color: var(--text); }
+.approve .credit-big b { font-size: 22px; font-weight: 700; color: var(--amber); }
+.approve .credit-big span { font-size: 13px; color: var(--muted); }
+.approve .prompt { font-size: 14px; line-height: 1.6; color: var(--text); }
+.approve details.raw summary { cursor: pointer; font-size: 12.5px; color: var(--muted); list-style: none; }
+.approve details.raw summary::before { content: "▸ "; }
+.approve details.raw[open] summary::before { content: "▾ "; }
+.approve details.raw .termblk { margin-top: 8px; }
