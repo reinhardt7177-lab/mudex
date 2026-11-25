@@ -16,6 +16,7 @@ import postgres from "npm:postgres@3.4.5";
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3 });
 const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY");
 const MAX_OUTPUT_TOKENS = 16000; // 한 번 호출로 한도를 크게 넘지 않게 묶는다
+const TRAINEE_BUDGET_USD = 5; // 연수생 한 명이 쓸 수 있는 AI 비용(달러)
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -223,9 +224,9 @@ async function join(req: Request) {
     }
   }
   const code = newCode();
-  // 개인 한도는 두지 않는다(연수 전체 안전선만). 코드는 연수가 끝나는 시각에 함께 끝난다.
+  // 연수생 한 명당 한도(달러)와 연수 전체 안전선을 함께 둔다. 코드는 연수가 끝나는 시각에 함께 끝난다.
   await sql`insert into mudex.codes (code, label, budget_usd, expires_at, cohort_id, trainee_name, device_id)
-            values (${code}, ${name}, 1000, ${c.ends_at}, ${c.id}, ${name}, ${device})`;
+            values (${code}, ${name}, ${TRAINEE_BUDGET_USD}, ${c.ends_at}, ${c.id}, ${name}, ${device})`;
   return json(200, { code, cohort: { name: c.name, ends_at: c.ends_at } });
 }
 
