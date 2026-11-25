@@ -55,7 +55,7 @@ async function renderHome() {
             <label>끝나는 시각<input id="nEnds" type="datetime-local"></label>
             <label>전체 안전선($)<input id="nBudget" type="number" min="1" step="1" value="30" placeholder="비우면 없음"></label>
           </div>
-          <p class="hint">연수생 개인 한도는 없습니다. 연수 전체 사용액이 안전선에 닿으면 멈춥니다. 끝나는 시각이 되면 코드가 저절로 폐기됩니다.</p>
+          <p class="hint">연수생 한 명당 5달러까지 쓸 수 있습니다. 연수 전체 사용액이 안전선에 닿아도 멈춥니다. 끝나는 시각이 되면 코드가 저절로 폐기됩니다.</p>
           <button class="btn pri" type="submit">연수 만들기</button>
         </form>
         <div id="list" class="list"><div class="muted">불러오는 중…</div></div>

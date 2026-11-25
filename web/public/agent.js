@@ -36,7 +36,18 @@ export function buildAgent() {
 }
 
 // 중계 서버 호출. 여럿이 한꺼번에 쓰면 OpenAI가 '잠시 후 다시'(429)나 일시 오류(5xx)를 주므로 몇 번 기다렸다 다시 한다
-export async function relayPost(relay, path, code, body, signal) {
+// 중계·OpenAI 오류를 연수생이 알아듣고 다음에 할 일을 알 수 있는 우리말로 바꾼다(영어 원문·조직 번호는 보이지 않게)
+function koError(st, j) {
+  const c = j?.error?.code ?? "", m = j?.error?.message ?? "";
+  if (st === 429) return "지금 사람이 몰려 AI가 잠시 막혔어요. 1분쯤 뒤에 다시 보내 주세요.";
+  if (st >= 500) return "AI 서버가 잠시 불안정해요. 조금 뒤에 다시 보내 주세요.";
+  if (/context_length|maximum context/i.test(c + m)) return "대화가 너무 길어져 AI가 다 읽지 못해요. 새 프로젝트를 만들어 이어서 해 주세요.";
+  if (/invalid_prompt|content_policy|moderation|safety/i.test(c + m)) return "AI가 이 내용은 만들 수 없다고 했어요. 표현을 바꿔서 다시 부탁해 주세요.";
+  if ((st === 402 || st === 403) && m && !/강사님/.test(m)) return `${m} 강사님께 알려 주세요.`;
+  return m || `중계 서버 오류 ${st}`;
+}
+
+export async function relayPost(relay, path, code, body, signal, onWait) {
   const waits = [3, 8, 20];
   for (let i = 0; ; i++) {
     let r, j = null, netErr = null;
@@ -46,12 +57,13 @@ export async function relayPost(relay, path, code, body, signal) {
     } catch (e) { if (signal?.aborted) throw new Error("멈췄습니다."); netErr = e; }
     if (r?.ok && j) return j;
     const again = netErr || r.status === 429 || r.status >= 500;
-    if (!again || i >= waits.length) throw new Error(j?.error?.message ?? (netErr ? "인터넷 연결이 끊겼거나 중계 서버에 닿지 않습니다. 연결을 확인하고 다시 보내 주세요." : `중계 서버 오류 ${r.status}`));
+    if (!again || i >= waits.length) throw new Error(netErr ? "인터넷 연결이 끊겼거나 중계 서버에 닿지 않습니다. 연결을 확인하고 다시 보내 주세요." : koError(r.status, j));
     const sec = Math.min(30, Number(r?.headers.get("retry-after")) || waits[i]);
+    if (i === 0) onWait?.(); // 말없이 30초 넘게 멈춘 것처럼 보이지 않게 한 번 알린다
     await new Promise((res, rej) => { const t = setTimeout(res, sec * 1000); signal?.addEventListener("abort", () => { clearTimeout(t); rej(new Error("멈췄습니다.")); }, { once: true }); });
   }
 }
-const respond = (code, relay, body, signal) => relayPost(relay, "/v1/responses", code, body, signal);
+const respond = (code, relay, body, signal, onWait) => relayPost(relay, "/v1/responses", code, body, signal, onWait);
 
 export async function relayStatus(code, relay = DEFAULT_RELAY) {
   const r = await fetch(`${relay}/status`, { headers: { Authorization: `Bearer ${code}` } });
@@ -69,7 +81,8 @@ export async function runAgent({ code, relay = DEFAULT_RELAY, model = DEFAULT_MO
   let totalCost = 0;
   for (let step = 0; step < maxSteps; step++) {
     if (ctx.signal?.aborted) throw new Error("멈췄습니다.");
-    const res = await respond(code, relay, { model, instructions: system, input: history, tools, reasoning: { effort }, store: false, include: ["reasoning.encrypted_content"] }, ctx.signal);
+    const res = await respond(code, relay, { model, instructions: system, input: history, tools, reasoning: { effort }, store: false, include: ["reasoning.encrypted_content"] }, ctx.signal,
+      () => ctx.emit({ type: "assistant", text: "사람이 많아 AI가 바빠요. 잠깐 기다렸다가 저절로 다시 해요." }));
     totalCost += res.mudex?.cost_usd ?? 0;
     ctx.emit({ type: "cost", step, cost_usd: res.mudex?.cost_usd, remaining_usd: res.mudex?.remaining_usd });
     history.push(...res.output);
