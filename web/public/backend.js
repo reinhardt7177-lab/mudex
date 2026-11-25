@@ -192,7 +192,7 @@ async function state(local) {
     code_set: !!settings.code, code_hint: settings.code ? settings.code.slice(0, 8) + "····" : null, name: settings.name ?? null, cohort: settings.cohort ?? null,
     model: settings.model ?? DEFAULT_MODEL, effort: settings.effort ?? DEFAULT_EFFORT, approval: settings.approval ?? "ask",
     theme: settings.theme ?? "b", skills: [], jobs: await listJobs(), web: true, can_pick_folder: canPickFolder(),
-    hf: { logged_in: hf.loggedIn, logging_in: !!hf.pendingLogin },
+    hf: { logged_in: hf.loggedIn, logging_in: !!hf.pendingLogin, account: hf.account },
   };
   if (local) return s;
   await Promise.all([

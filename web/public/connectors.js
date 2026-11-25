@@ -55,7 +55,7 @@ export class Connectors {
   status(c) {
     if (c.practice) return { connected: !!c.practice_connected, logging_in: false };
     const cl = this.client(c);
-    return { connected: cl.loggedIn, logging_in: !!cl.pendingLogin };
+    return { connected: cl.loggedIn, logging_in: !!cl.pendingLogin, account: cl.loggedIn ? cl.account : null };
   }
   view() { return this.list.map((c) => ({ ...c, ...this.status(c), tools_count: this.toolCache.get(c.id)?.length ?? (c.practice && c.practice_connected ? 185 : null) })); }
 
