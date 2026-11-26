@@ -53,7 +53,7 @@ async function renderHome() {
           <label>연수 이름<input id="nName" value="광주 AI·SW 2기 · ${md(new Date())}" maxlength="40"></label>
           <div class="two">
             <label>끝나는 시각<input id="nEnds" type="datetime-local"></label>
-            <label>전체 안전선($)<input id="nBudget" type="number" min="1" step="1" value="30" placeholder="비우면 없음"></label>
+            <label>전체 안전선($)<input id="nBudget" type="number" min="1" step="1" value="100" placeholder="비우면 없음"></label>
           </div>
           <p class="hint">연수생 한 명당 5달러까지 쓸 수 있습니다. 연수 전체 사용액이 안전선에 닿아도 멈춥니다. 끝나는 시각이 되면 코드가 저절로 폐기됩니다.</p>
           <button class="btn pri" type="submit">연수 만들기</button>
