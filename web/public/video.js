@@ -92,6 +92,58 @@ async function loudnessNamed(ff, name, ctx) {
   return { integrated_lufs: Number(j.input_i), true_peak_db: Number(j.input_tp), lra: Number(j.input_lra) };
 }
 
+// look: 그림이나 영상 장면을 AI가 직접 보게 한다. 원본 픽셀 좌표 격자를 얹어 위치(x,y,너비,높이)를 잴 수 있게 한다.
+async function grabFrames(ctx, rel, times) {
+  const blob = await ctx.ws.file(rel);
+  if (IMAGE_EXT.test(rel)) { const b = await createImageBitmap(blob); return { w: b.width, h: b.height, dur: null, frames: [{ t: null, b }] }; }
+  const url = URL.createObjectURL(blob), v = document.createElement("video");
+  v.muted = true; v.preload = "auto"; v.src = url;
+  try {
+    await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error("영상을 열지 못했습니다.")); });
+    const frames = [];
+    for (const t0 of times.length ? times : [v.duration / 2]) {
+      const t = Math.min(Math.max(0, Number(t0) || 0), Math.max(0, v.duration - 0.05));
+      await new Promise((r) => { v.onseeked = r; v.currentTime = t; });
+      frames.push({ t: Number(t.toFixed(2)), b: await createImageBitmap(v) });
+    }
+    return { w: v.videoWidth, h: v.videoHeight, dur: Number(v.duration.toFixed(3)), frames };
+  } finally { URL.revokeObjectURL(url); }
+}
+function drawLook(b, r, grid) {
+  const k = Math.min(4, 1024 / Math.max(r.w, r.h)), cw = Math.round(r.w * k), ch = Math.round(r.h * k);
+  const c = document.createElement("canvas"); c.width = cw; c.height = ch;
+  const g = c.getContext("2d");
+  g.drawImage(b, r.x, r.y, r.w, r.h, 0, 0, cw, ch);
+  let step = 0;
+  if (grid) {
+    step = [10, 20, 25, 50, 100, 200, 250, 500].find((s) => Math.max(r.w, r.h) / s <= 14) ?? 500;
+    g.font = "bold 12px sans-serif"; g.textBaseline = "top";
+    const label = (txt, x, y) => { g.strokeStyle = "#000"; g.lineWidth = 3; g.strokeText(txt, x, y); g.fillStyle = "#ffeb3b"; g.fillText(txt, x, y); };
+    const line = (x1, y1, x2, y2) => { g.strokeStyle = "rgba(255,40,40,.55)"; g.lineWidth = 1; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
+    for (let x = Math.ceil(r.x / step) * step; x <= r.x + r.w; x += step) { const px = Math.round((x - r.x) * k) + 0.5; line(px, 0, px, ch); label(String(x), px + 2, 2); }
+    for (let y = Math.ceil(r.y / step) * step; y <= r.y + r.h; y += step) { const py = Math.round((y - r.y) * k) + 0.5; line(0, py, cw, py); if (y > r.y) label(String(y), 2, py + 2); }
+  }
+  return { url: c.toDataURL("image/jpeg", 0.85), step };
+}
+
+// erase_text: 글자에 딱 맞춘 영역을 주변 색으로 메우고(delogo) 그 자리를 부드럽게 흐려 가장자리를 번지게 한다(줄무늬 자국 줄이기)
+function eraseGraph(regions, W, H, sigma) {
+  const parts = [];
+  regions.forEach((q, i) => {
+    const x = Math.max(1, Math.round(q.x)), y = Math.max(1, Math.round(q.y));
+    const w = Math.min(Math.round(q.w), W - 1 - x), h = Math.min(Math.round(q.h), H - 1 - y);
+    if (!(w >= 4 && h >= 4)) throw new Error(`${i + 1}번 영역이 화면 밖이거나 너무 작습니다.`);
+    const m = Math.max(0, Math.min(16, x, y, W - x - w, H - y - h));
+    const en = q.start != null || q.end != null ? `:enable='between(t\\,${Number(q.start ?? 0)}\\,${Number(q.end ?? 1e6)})'` : "";
+    const cx = x - m, cy = y - m, cw = w + 2 * m, chh = h + 2 * m;
+    const alpha = m > 0 ? `255*min(1\\,min(min(X\\,W-1-X)\\,min(Y\\,H-1-Y))/${m})` : "255";
+    parts.push(`[v${i}]delogo=x=${x}:y=${y}:w=${w}:h=${h}${en},split[b${i}][p${i}];` +
+      `[p${i}]crop=${cw}:${chh}:${cx}:${cy},gblur=sigma=${sigma},format=yuva420p,geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='${alpha}'[q${i}];` +
+      `[b${i}][q${i}]overlay=${cx}:${cy}${en}[v${i + 1}]`);
+  });
+  return `[0:v]null[v0];${parts.join(";")}`;
+}
+
 const H264 = ["-c:v", "libx264", "-crf", "20", "-preset", "veryfast", "-pix_fmt", "yuv420p"];
 const AAC = ["-c:a", "aac", "-b:a", "192k"];
 
@@ -246,6 +298,43 @@ export const VIDEO_TOOLS = [
     run: (a, ctx) => serial(() => withFiles(ctx, [a.file], async (ff, [n]) => {
       const info = await probeNamed(ff, n, a.file);
       return { ...info, loudness: info.has_audio ? await loudnessNamed(ff, n, ctx) : null };
+    })),
+  },
+  {
+    name: "look",
+    description: "그림 파일이나 영상의 장면을 직접 본다(AI가 눈으로 확인). 영상은 times(초)에 있는 장면을 최대 6장 보여 준다. 원본 픽셀 좌표 격자(빨간 선, 노란 숫자)를 얹어 주므로 글자·로고의 위치(x,y,너비,높이)를 잴 수 있다. region을 주면 그 부분만 크게 확대해서 더 정확히 잴 수 있다. 글자 지우기·자막 위치·장면 확인 전에 꼭 쓴다. 위치를 짐작하지 말고 이 도구로 확인한다.",
+    parameters: { type: "object", properties: {
+      path: { type: "string" }, times: { type: "array", items: { type: "number" }, maxItems: 6, description: "영상에서 볼 시각(초). 그림이면 비운다" },
+      region: { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } }, description: "확대해서 볼 부분(원본 픽셀)" },
+      grid: { type: "boolean", description: "좌표 격자, 기본 켬" },
+    }, required: ["path"], additionalProperties: false },
+    async run(a, ctx) {
+      const { w: W, h: H, dur, frames } = await grabFrames(ctx, a.path, (a.times ?? []).slice(0, 6));
+      const x = Math.max(0, a.region?.x ?? 0), y = Math.max(0, a.region?.y ?? 0);
+      const r = a.region ? { x, y, w: Math.min(a.region.w, W - x), h: Math.min(a.region.h, H - y) } : { x: 0, y: 0, w: W, h: H };
+      const shots = frames.map((f) => ({ t: f.t, ...drawLook(f.b, r, a.grid !== false) }));
+      frames.forEach((f) => f.b.close?.());
+      return { path: a.path, width: W, height: H, duration: dur, region: r, grid_step: shots[0]?.step ?? 0,
+        frames: shots.map((s) => s.t), note: "그림은 바로 다음 메시지로 보여 준다. 격자 숫자는 원본 픽셀 좌표다.", images: shots.map((s) => s.url) };
+    },
+  },
+  {
+    name: "erase_text",
+    description: "영상 속 글자·로고를 지운다. 각 영역(원본 픽셀 x,y,w,h와 보이는 시각 start~end초)을 주변 색으로 메운 뒤 부드럽게 흐려 자연스럽게 만든다. 영역은 look으로 확인해 글자에 딱 맞게(여백 4~8px) 잡는다. 넓게 잡을수록 흔적이 커진다. 글자가 움직이거나 위치가 바뀌면 시간대별로 영역을 나눈다. 화면 절반을 덮는 큰 글자에는 맞지 않는다(사용자에게 띠로 덮기 등을 제안).",
+    parameters: { type: "object", properties: {
+      input: { type: "string" }, output: { type: "string", description: "예: out/erased.mp4" },
+      regions: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" }, start: { type: "number" }, end: { type: "number" } }, required: ["x", "y", "w", "h"] } },
+      blur: { type: "number", description: "흐림 세기 3~12, 기본 7" },
+    }, required: ["input", "output", "regions"], additionalProperties: false },
+    run: (a, ctx) => serial(() => withFiles(ctx, [a.input], async (ff, [n]) => {
+      const info = await probeNamed(ff, n, a.input);
+      const out = tmpName(a.output);
+      const graph = eraseGraph(a.regions, info.width, info.height, Math.min(12, Math.max(3, a.blur ?? 7)));
+      const audio = info.has_audio ? ["-map", "0:a?", "-c:a", "copy"] : [];
+      await exec(ff, ["-i", n, "-filter_complex", graph, "-map", `[v${a.regions.length}]`, ...audio, "-c:v", "libx264", "-crf", "20", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out], ctx);
+      const r = await probeNamed(ff, out, a.output).catch(() => ({ file: a.output }));
+      const size = await saveOut(ff, out, a.output, ctx);
+      return { ...r, size, regions: a.regions.length };
     })),
   },
   {

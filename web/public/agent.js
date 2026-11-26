@@ -27,7 +27,9 @@ const SYSTEM = `너는 '무덱스'다. 클로드 코드·코덱스 같은 바이
 - 그림이 필요하면 make_image(무덱스 자체 이미지 생성, 크레딧 0)를 먼저 쓴다.
 - 최신 정보(가격·모델·사용법 등)가 필요하면 web_search로 인터넷을 찾아본다. 찾은 내용은 출처와 함께 짧게 알려 준다.
 - 영상 자르기·잇기·음악·음량은 list_clips·trim·concat·add_music·export_final·measure(브라우저 안 ffmpeg)로 한다. 처음 한 번 준비에 시간이 걸리고, 다시 인코딩하는 일(자르기, 크기가 다른 영상 잇기)은 1080p에서 느리다.
-- 정해진 편집 도구로 안 되는 일(로고 가리기·덮기, 그림·글자 얹기, 색·속도·크기 바꾸기)은 run_ffmpeg로 ffmpeg 명령을 직접 짠다. 화면 속 위치를 정해야 하면 먼저 run_ffmpeg로 그 시각의 화면을 png로 뽑아 보고 좌표를 정한다.
+- 그림이나 영상 장면을 봐야 하면 look으로 직접 본다(좌표 격자가 함께 나온다). 화면 속 위치·글자·장면 내용을 짐작하지 말고 look으로 확인한다.
+- 영상 속 글자·로고 지우기는 erase_text로 한다. 먼저 look으로 여러 시각(1~2초 간격)을 훑어 글자가 나오는 시간대를 찾고, region으로 확대해 글자에 딱 맞는 영역을 잰다. 끝나면 결과 영상을 look으로 다시 보고 남은 글자나 어색한 흔적이 없는지 확인한다.
+- 정해진 편집 도구로 안 되는 일(띠로 덮기, 그림·글자 얹기, 색·속도·크기 바꾸기)은 run_ffmpeg로 ffmpeg 명령을 직접 짠다.
 - 힉스필드 영상 모델을 따로 말하지 않으면 kling2_6(Kling 2.6)을 쓴다.`;
 
 export function buildAgent() {
@@ -100,6 +102,7 @@ export async function runAgent({ code, relay = DEFAULT_RELAY, model = DEFAULT_MO
       if (res.status === "incomplete") ctx.emit({ type: "assistant", text: "답이 너무 길어 중간에 끊겼어요. \"이어서 해 줘\"라고 적어 주세요." });
       return { final: text, totalCost, messages: history };
     }
+    const seen = []; // look 같은 도구가 돌려준 그림: 모든 도구 결과 뒤에 한 번에 보여 준다
     for (const call of calls) {
       if (ctx.signal?.aborted) throw new Error("멈췄습니다."); // 멈춤을 누른 뒤에는 남은 도구를 실행하지 않는다
       const tool = ALL.find((t) => t.name === call.name);
@@ -111,9 +114,11 @@ export async function runAgent({ code, relay = DEFAULT_RELAY, model = DEFAULT_MO
         if (!tool) throw new Error(`없는 도구: ${call.name}`);
         result = await tool.run(args, full);
       } catch (e) { ok = false; result = { error: e.message }; }
+      if (Array.isArray(result?.images)) { seen.push(...result.images); result = { ...result, images: undefined, image_count: result.images.length }; }
       ctx.emit({ type: "tool_result", id: call.call_id, name: call.name, ok, ms: Math.round(performance.now() - t0), result });
       history.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(result) });
     }
+    if (seen.length) history.push({ role: "user", content: [{ type: "input_text", text: `[도구가 보여 주는 그림 ${seen.length}장. 사용자가 보낸 말이 아니다]` }, ...seen.map((u) => ({ type: "input_image", image_url: u, detail: "high" }))] });
     // 도구 결과까지 짝이 맞았을 때 저장한다. 새로 고침으로 끊겨도 여기까지는 기억한다
     await ctx.save?.(history);
   }
