@@ -238,7 +238,7 @@ const TOOL_META = {
   run_command: ["term", "명령 실행"], run_js: ["term", "코드 실행"], check_page: ["eye", "페이지 열어 확인"], download_file: ["down", "내려받기"], upload_file: ["up", "올리기"], make_image: ["image", "그림 그리기"],
   web_search: ["search", "인터넷 검색"], mcp_list_tools: ["search", "커넥터 도구 찾기"], mcp_describe: ["plug", "도구 설명 보기"], mcp_call: ["plug", "커넥터 도구 부르기"],
   list_clips: ["film", "클립 살펴보기"], probe: ["gauge", "길이 재기"], trim: ["cut", "자르기"], concat: ["join", "이어 붙이기"],
-  add_music: ["music", "음악 얹기"], export_final: ["down", "내보내기"], measure: ["gauge", "결과 재기"], run_ffmpeg: ["film", "영상 편집(ffmpeg)"], read_guide: ["list", "양식 읽기"],
+  add_music: ["music", "음악 얹기"], export_final: ["down", "내보내기"], measure: ["gauge", "결과 재기"], run_ffmpeg: ["film", "영상 편집(ffmpeg)"], look: ["eye", "화면 보기"], erase_text: ["film", "글자 지우기"], read_guide: ["list", "양식 읽기"],
   higgsfield_clip: ["film", "힉스필드로 영상 만들기"], review_sheet: ["grid", "8fps 검수 시트"],
 };
 const SILENT_TOOLS = new Set(["update_plan", "ask_user", "set_plan", "ask_pick"]);
@@ -259,6 +259,8 @@ function toolSummary(name, a = {}) {
     case "concat": return `${(a.inputs ?? []).length}개 → ${a.output}`;
     case "add_music": return `${a.music}${a.fade_out ? ` · 끝 ${a.fade_out}초 페이드` : ""}`;
     case "run_ffmpeg": return `${(a.inputs ?? []).join(", ")} → ${a.output}`;
+    case "look": return `${a.path}${a.times?.length ? ` · ${a.times.join(", ")}초` : ""}${a.region ? " · 확대" : ""}`;
+    case "erase_text": return `${a.input} → ${a.output} · ${(a.regions ?? []).length}곳`;
     case "export_final": return `${a.output}${a.duration ? ` · ${a.duration}초` : ""} · 음량 ${a.target_lufs ?? -14} LUFS`;
     case "measure": case "probe": return a.file;
     case "higgsfield_clip": return `${a.model ?? "kling2_6"} · ${a.duration ?? 5}초 · ${a.start_image}`;
